@@ -49,6 +49,11 @@ local nofogConnection = nil
 local viewingPlayer = nil
 local viewConnection = nil
 
+-- Variables de estado: Stats
+local statsActive = false
+local statsConnection = nil
+local StatsFrame = nil
+
 -- Guardado de iluminación y físicas originales del juego
 local origAmbient = Lighting.Ambient
 local origOutdoorAmbient = Lighting.OutdoorAmbient
@@ -433,6 +438,7 @@ addCmdLabel("unantiafk;", "Desactiva la protección anti-inactividad.", {"unanti
 addCmdLabel("fpscap [num];", "Cambia el límite máximo de FPS permitidos.", {"fpscap"})
 addCmdLabel("serverhop; / sh;", "Te transfiere saltando a servidores públicos óptimos.", {"serverhop", "sh"})
 addCmdLabel("camfov [num];", "Ajusta el FOV de la cámara con transiciones suaves.", {"camfov"})
+addCmdLabel("stats;", "Muestra u oculta el panel de rendimiento (FPS y Ping).", {"stats"})
 
 local function updateScrollLayout()
     local visibleCount = 0
@@ -529,7 +535,7 @@ end
 
 DragHandle.InputBegan:Connect(function(input)
     if ConfirmFrame.Visible then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
@@ -594,6 +600,52 @@ end
 local function stopClickTp()
     clickTp = false
     if clickTpConnection then clickTpConnection:Disconnect(); clickTpConnection = nil end
+end
+
+local function stopStats()
+    statsActive = false
+    if statsConnection then statsConnection:Disconnect(); statsConnection = nil end
+    if StatsFrame then StatsFrame:Destroy(); StatsFrame = nil end
+end
+
+local function startStats()
+    if statsActive then return end
+    statsActive = true
+    
+    StatsFrame = Instance.new("Frame")
+    StatsFrame.Name = "c00l_StatsPanel"
+    StatsFrame.Size = UDim2.new(0, 120, 0, 45)
+    StatsFrame.Position = UDim2.new(1, -135, 0, 45)
+    StatsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    StatsFrame.BorderSizePixel = 1
+    StatsFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    StatsFrame.ZIndex = 30
+    StatsFrame.Parent = ScreenGui
+
+    local StatsLabel = Instance.new("TextLabel")
+    StatsLabel.Size = UDim2.new(1, -10, 1, 0)
+    StatsLabel.Position = UDim2.new(0, 5, 0, 0)
+    StatsLabel.BackgroundTransparency = 1
+    StatsLabel.Font = Enum.Font.Code
+    StatsLabel.TextSize = 13
+    StatsLabel.TextColor3 = Color3.fromRGB(255, 51, 51)
+    StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatsLabel.TextYAlignment = Enum.TextYAlignment.Center
+    StatsLabel.Parent = StatsFrame
+
+    local lastUpdate = 0
+    local frameCount = 0
+    statsConnection = RunService.RenderStepped:Connect(function(dt)
+        frameCount = frameCount + 1
+        lastUpdate = lastUpdate + dt
+        if lastUpdate >= 0.5 then
+            local fps = math.floor(frameCount / lastUpdate)
+            local ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+            StatsLabel.Text = "FPS: " .. fps .. "\nPING: " .. ping .. " ms"
+            frameCount = 0
+            lastUpdate = 0
+        end
+    end)
 end
 
 local function getClosestPlayerToMouse()
@@ -784,6 +836,7 @@ YesBtn.Activated:Connect(function()
         stopFullbright()
         stopNofog()
         stopClickTp()
+        stopStats()
         
         infJump = false
         if infJumpConnection then infJumpConnection:Disconnect(); infJumpConnection = nil end
@@ -969,7 +1022,7 @@ local VALID_COMMANDS = {
     ["spin"] = true, ["unspin"] = true,
     ["chatspam"] = true, ["unchatspam"] = true, ["keybind"] = true, ["clearbinds"] = true,
     ["gravity"] = true, ["ungravity"] = true, ["antiafk"] = true, ["noidle"] = true, ["unantiafk"] = true,
-    ["fpscap"] = true, ["serverhop"] = true, ["sh"] = true, ["camfov"] = true
+    ["fpscap"] = true, ["serverhop"] = true, ["sh"] = true, ["camfov"] = true, ["stats"] = true
 }
 
 local function executeCommand(rawTextString)
@@ -1450,6 +1503,9 @@ local function executeCommand(rawTextString)
                     else
                         errorMessage = "falta un numero."
                     end
+                elseif cmd == "stats" then
+                    commandFound = true
+                    if statsActive then stopStats() else startStats() end
                 end
             end
         else errorMessage = "requiere ; para su función." end
