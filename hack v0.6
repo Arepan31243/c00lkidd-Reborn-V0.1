@@ -529,7 +529,7 @@ end
 
 DragHandle.InputBegan:Connect(function(input)
     if ConfirmFrame.Visible then return end
-    if input.UserInputType == Enum.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
@@ -575,12 +575,14 @@ local function stopNoclip()
 end
 
 local function stopFullbright()
-    fullbright = false
-    if fullbrightConnection then fullbrightConnection:Disconnect(); fullbrightConnection = nil end
-    Lighting.Ambient = origAmbient
-    Lighting.OutdoorAmbient = origOutdoorAmbient
-    Lighting.Brightness = origBrightness
-    Lighting.GlobalShadows = origShadows -- Arreglado: Restaura correctamente las sombras originales del juego
+    if fullbright then
+        fullbright = false
+        if fullbrightConnection then fullbrightConnection:Disconnect(); fullbrightConnection = nil end
+        Lighting.Ambient = origAmbient
+        Lighting.OutdoorAmbient = origOutdoorAmbient
+        Lighting.Brightness = origBrightness
+        Lighting.GlobalShadows = true
+    end
 end
 
 local function stopNofog()
