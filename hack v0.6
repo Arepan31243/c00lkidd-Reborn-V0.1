@@ -1,4 +1,4 @@
--- c00lgui // legacy Retro Edition 2026 (Persistent Rejoin + Logs + TP Fix + Red Theme + Draggable Fix)
+-- c00lgui // legacy Retro Edition 2026 (Persistent Rejoin + Logs + TP Fix + Red Theme)
 local src = [==[
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -12,23 +12,72 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
--- Variables de estado (Mantenidas)
-local flying, flySpeed, flyConnection, flyBv, flyBg = false, 50, nil, nil, nil
-local tooltipConnection, minimized = nil, false 
-local freecamActive, freecamConnection, freecamPitch, freecamYaw = false, nil, 0, 0
-local espActive, espConnections = false, {}
-local infJump, infJumpConnection = false, nil
-local noclip, noclipConnection = false, nil
-local fullbright, fullbrightConnection = false, nil
-local nofog, nofogConnection = false, nil
-local viewingPlayer, viewConnection = nil, nil
-local statsActive, statsConnection, StatsFrame = false, nil, nil
-local clickTp, clickTpConnection = false, nil
-local hitboxSize, aimbotActive, aimbotConnection = 2, false, nil
-local spinbotActive, spinVelocity = false, nil
-local chatSpamActive, chatSpamTask = false, nil
-local antiAfkConnection, keybinds = nil, {} 
+-- Variables de estado originales
+local flying = false
+local flySpeed = 50 
+local flyConnection = nil
+local flyBv = nil
+local flyBg = nil
+local tooltipConnection = nil
+local minimized = false 
 
+-- Variables de estado: Freecam
+local freecamActive = false
+local freecamConnection = nil
+local freecamPitch = 0
+local freecamYaw = 0
+
+-- Variables de estado: ESP
+local espActive = false
+local espConnections = {}
+
+-- Variables de estado: Salto Infinito
+local infJump = false
+local infJumpConnection = nil
+
+-- Variables de estado: Noclip
+local noclip = false
+local noclipConnection = nil
+
+-- Variables de estado: Lighting 
+local fullbright = false
+local fullbrightConnection = nil
+local nofog = false
+local nofogConnection = nil
+
+-- Variables de estado: View
+local viewingPlayer = nil
+local viewConnection = nil
+
+-- Variables de estado: Stats
+local statsActive = false
+local statsConnection = nil
+local StatsFrame = nil
+
+-- Guardado de iluminación y físicas originales del juego
+local origAmbient = Lighting.Ambient
+local origOutdoorAmbient = Lighting.OutdoorAmbient
+local origBrightness = Lighting.Brightness
+local origShadows = Lighting.GlobalShadows
+local origFogEnd = Lighting.FogEnd
+local origGravity = Workspace.Gravity
+
+-- Variables de estado: Click TP
+local clickTp = false
+local clickTpConnection = nil
+
+-- Variables de estado: Nuevas Funciones
+local hitboxSize = 2
+local aimbotActive = false
+local aimbotConnection = nil
+local spinbotActive = false
+local spinVelocity = nil
+local chatSpamActive = false
+local chatSpamTask = nil
+local antiAfkConnection = nil
+local keybinds = {} 
+
+-- Configuración de Animaciones
 local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 -- Contenedor Principal
@@ -39,7 +88,7 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Panel Principal Centrado
+-- Panel Principal
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainPanel"
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -48,12 +97,12 @@ MainFrame.Size = UDim2.new(0, 0, 0, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 2
 MainFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
-MainFrame.Active = true
+MainFrame.Active = false -- Cambiado a false para permitir que el hijo reciba el input
 MainFrame.ClipsDescendants = true 
 MainFrame.ZIndex = 1
 MainFrame.Parent = ScreenGui
 
--- Barra de Título
+-- Barra de Título (Contenedor Superior)
 local TitleBar = Instance.new("Frame")
 TitleBar.Name = "TitleBar"
 TitleBar.Size = UDim2.new(1, 0, 0, 28)
@@ -65,9 +114,11 @@ TitleBar.Visible = false
 TitleBar.ZIndex = 3
 TitleBar.Parent = MainFrame
 
+-- Zona de Arrastre Segura (Corregida: Active true para arrastre)
 local DragHandle = Instance.new("TextLabel")
 DragHandle.Name = "DragHandle"
 DragHandle.Size = UDim2.new(1, -100, 1, 0) 
+DragHandle.Position = UDim2.new(0, 0, 0, 0)
 DragHandle.BackgroundTransparency = 1
 DragHandle.Font = Enum.Font.Code
 DragHandle.Text = "  c00lgui // v0.6_ch.legacy"
@@ -78,38 +129,1491 @@ DragHandle.Active = true
 DragHandle.ZIndex = 4
 DragHandle.Parent = TitleBar
 
--- [SISTEMA DE ARRASTRE CORREGIDO]
-local dragging, dragStart, startPos
+-- Botón de Logs
+local LogsBtn = Instance.new("TextButton")
+LogsBtn.Name = "LogsBtn"
+LogsBtn.Size = UDim2.new(0, 40, 1, 0)
+LogsBtn.Position = UDim2.new(1, -96, 0, 0)
+LogsBtn.BackgroundTransparency = 1
+LogsBtn.Font = Enum.Font.Code
+LogsBtn.Text = "LOGS"
+LogsBtn.TextColor3 = Color3.fromRGB(255, 255, 255) 
+LogsBtn.TextSize = 12
+LogsBtn.Active = true
+LogsBtn.ZIndex = 5
+LogsBtn.Parent = TitleBar
+
+-- Botón de Minimizar
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Size = UDim2.new(0, 28, 1, 0)
+MinimizeBtn.Position = UDim2.new(1, -56, 0, 0)
+MinimizeBtn.BackgroundTransparency = 1
+MinimizeBtn.Font = Enum.Font.Code
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 0, 51) 
+MinimizeBtn.TextSize = 16
+MinimizeBtn.Active = true
+MinimizeBtn.ZIndex = 5
+MinimizeBtn.Parent = TitleBar
+
+-- Botón de Cerrar (X)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(0, 28, 1, 0)
+CloseBtn.Position = UDim2.new(1, -28, 0, 0)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Font = Enum.Font.Code
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 0, 51) 
+CloseBtn.TextSize = 14
+CloseBtn.Active = true
+CloseBtn.ZIndex = 5
+CloseBtn.Parent = TitleBar
+
+-- Barra de Comandos (TextBox)
+local CmdBar = Instance.new("TextBox")
+CmdBar.Name = "CmdBar"
+CmdBar.Size = UDim2.new(1, -20, 0, 30)
+CmdBar.Position = UDim2.new(0, 10, 0, 40)
+CmdBar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+CmdBar.BorderSizePixel = 1
+CmdBar.BorderColor3 = Color3.fromRGB(100, 0, 20)
+CmdBar.Font = Enum.Font.Code
+CmdBar.PlaceholderText = "escribe tu comando."
+CmdBar.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+CmdBar.Text = ""
+CmdBar.TextColor3 = Color3.fromRGB(255, 50, 50)
+CmdBar.TextSize = 14
+CmdBar.TextXAlignment = Enum.TextXAlignment.Left
+CmdBar.ClearTextOnFocus = true
+CmdBar.Visible = false 
+CmdBar.ZIndex = 2
+CmdBar.Parent = MainFrame
+
+-- Contenedor de Lista de Comandos
+local CmdsList = Instance.new("ScrollingFrame")
+CmdsList.Name = "CmdsList"
+CmdsList.Size = UDim2.new(1, -20, 1, -90)
+CmdsList.Position = UDim2.new(0, 10, 0, 80)
+CmdsList.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+CmdsList.BorderSizePixel = 1
+CmdsList.BorderColor3 = Color3.fromRGB(40, 40, 40)
+CmdsList.CanvasSize = UDim2.new(0, 0, 0, 0)
+CmdsList.ScrollBarThickness = 6
+CmdsList.ScrollBarImageColor3 = Color3.fromRGB(255, 0, 51)
+CmdsList.Visible = false 
+CmdsList.ZIndex = 2
+CmdsList.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 4)
+UIListLayout.Parent = CmdsList
+
+-- Ventana Flotante de Explicación (Tooltip)
+local Tooltip = Instance.new("TextLabel")
+Tooltip.Name = "Tooltip"
+Tooltip.Size = UDim2.new(0, 200, 0, 42)
+Tooltip.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Tooltip.BorderColor3 = Color3.fromRGB(255, 0, 51)
+Tooltip.BorderSizePixel = 1
+Tooltip.Font = Enum.Font.SourceSansBold
+Tooltip.TextColor3 = Color3.fromRGB(220, 220, 220)
+Tooltip.TextSize = 13
+Tooltip.TextWrapped = true
+Tooltip.ZIndex = 10
+Tooltip.Visible = false
+Tooltip.Parent = ScreenGui
+
+------------------------------------------------------------------------
+-- PANEL DE LOGS
+------------------------------------------------------------------------
+local LogsFrame = Instance.new("Frame")
+LogsFrame.Name = "LogsPanel"
+LogsFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+LogsFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+LogsFrame.Size = UDim2.new(0, 280, 0, 200)
+LogsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+LogsFrame.BorderSizePixel = 2
+LogsFrame.BorderColor3 = Color3.fromRGB(255, 0, 51) 
+LogsFrame.ClipsDescendants = true
+LogsFrame.ZIndex = 20
+LogsFrame.Visible = false
+LogsFrame.Parent = ScreenGui
+
+local LogsTitle = Instance.new("TextLabel")
+LogsTitle.Size = UDim2.new(1, 0, 0, 28)
+LogsTitle.BackgroundColor3 = Color3.fromRGB(255, 0, 51) 
+LogsTitle.BackgroundTransparency = 0.8
+LogsTitle.Font = Enum.Font.Code
+LogsTitle.Text = " REGISTRO DE COMANDOS"
+LogsTitle.TextColor3 = Color3.fromRGB(255, 51, 51) 
+LogsTitle.TextSize = 14
+LogsTitle.TextXAlignment = Enum.TextXAlignment.Left
+LogsTitle.Parent = LogsFrame
+
+local CloseLogsBtn = Instance.new("TextButton")
+CloseLogsBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseLogsBtn.Position = UDim2.new(1, -28, 0, 0)
+CloseLogsBtn.BackgroundTransparency = 1
+CloseLogsBtn.Font = Enum.Font.Code
+CloseLogsBtn.Text = "X"
+CloseLogsBtn.TextColor3 = Color3.fromRGB(255, 0, 51) 
+CloseLogsBtn.TextSize = 14
+CloseLogsBtn.Parent = LogsFrame
+
+local LogsScroll = Instance.new("ScrollingFrame")
+LogsScroll.Size = UDim2.new(1, -10, 1, -35)
+LogsScroll.Position = UDim2.new(0, 5, 0, 32)
+LogsScroll.BackgroundTransparency = 1
+LogsScroll.BorderSizePixel = 0
+LogsScroll.ScrollBarThickness = 4
+LogsScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 0, 51) 
+LogsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+LogsScroll.Parent = LogsFrame
+
+local LogsLayout = Instance.new("UIListLayout")
+LogsLayout.Padding = UDim.new(0, 2)
+LogsLayout.Parent = LogsScroll
+
+local logCount = 0
+local function addLog(cmdText)
+    logCount = logCount + 1
+    local logLbl = Instance.new("TextLabel")
+    logLbl.Size = UDim2.new(1, -10, 0, 20)
+    logLbl.BackgroundTransparency = 1
+    logLbl.Font = Enum.Font.Code
+    
+    local timeString = string.format("%02d:%02d:%02d", os.date("*t").hour, os.date("*t").min, os.date("*t").sec)
+    logLbl.Text = "[" .. timeString .. "] " .. cmdText
+    logLbl.TextColor3 = Color3.fromRGB(255, 80, 80) 
+    logLbl.TextSize = 13
+    logLbl.TextXAlignment = Enum.TextXAlignment.Left
+    logLbl.Parent = LogsScroll
+    LogsScroll.CanvasSize = UDim2.new(0, 0, 0, logCount * 22)
+end
+
+LogsBtn.Activated:Connect(function()
+    if LogsFrame.Visible then return end
+    LogsFrame.Size = UDim2.new(0, 0, 0, 0)
+    LogsFrame.Visible = true
+    TweenService:Create(LogsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 280, 0, 200)}):Play()
+end)
+
+CloseLogsBtn.Activated:Connect(function()
+    local closeTween = TweenService:Create(LogsFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
+    closeTween:Play()
+    closeTween.Completed:Connect(function() LogsFrame.Visible = false end)
+end)
+
+------------------------------------------------------------------------
+-- CONFIRMACIÓN DE ELIMINACIÓN
+------------------------------------------------------------------------
+local ConfirmFrame = Instance.new("Frame")
+ConfirmFrame.Name = "ConfirmPanel"
+ConfirmFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+ConfirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+ConfirmFrame.Size = UDim2.new(0, 0, 0, 0)
+ConfirmFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+ConfirmFrame.BorderSizePixel = 2
+ConfirmFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
+ConfirmFrame.ClipsDescendants = true
+ConfirmFrame.ZIndex = 25
+ConfirmFrame.Visible = false
+ConfirmFrame.Parent = ScreenGui
+
+local ConfirmText = Instance.new("TextLabel")
+ConfirmText.Size = UDim2.new(1, -20, 0, 40)
+ConfirmText.Position = UDim2.new(0, 10, 0, 15)
+ConfirmText.BackgroundTransparency = 1
+ConfirmText.Font = Enum.Font.Code
+ConfirmText.Text = "estas seguro de\neliminar el gui?"
+ConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+ConfirmText.TextSize = 14
+ConfirmText.ZIndex = 26
+ConfirmText.Parent = ConfirmFrame
+
+local YesBtn = Instance.new("TextButton")
+YesBtn.Size = UDim2.new(0, 85, 0, 26)
+YesBtn.Position = UDim2.new(0, 20, 1, -36)
+YesBtn.BackgroundColor3 = Color3.fromRGB(30, 5, 5)
+YesBtn.BorderSizePixel = 1
+YesBtn.BorderColor3 = Color3.fromRGB(255, 0, 51)
+YesBtn.Font = Enum.Font.Code
+YesBtn.Text = "[ SI ]"
+YesBtn.TextColor3 = Color3.fromRGB(255, 51, 51)
+YesBtn.TextSize = 14
+YesBtn.ZIndex = 26
+YesBtn.Parent = ConfirmFrame
+
+local NoBtn = Instance.new("TextButton")
+NoBtn.Size = UDim2.new(0, 85, 0, 26)
+NoBtn.Position = UDim2.new(1, -105, 1, -36)
+NoBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+NoBtn.BorderSizePixel = 1
+NoBtn.BorderColor3 = Color3.fromRGB(80, 80, 80)
+NoBtn.Font = Enum.Font.Code
+NoBtn.Text = "[ NO ]"
+NoBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+NoBtn.TextSize = 14
+NoBtn.ZIndex = 26
+NoBtn.Parent = ConfirmFrame
+
+local labelRegistry = {}
+
+local function addCmdLabel(codeText, description, searchKeys)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -10, 0, 22)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.Code
+    label.Text = " > " .. codeText
+    label.TextColor3 = Color3.fromRGB(255, 51, 51)
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Active = true
+    label.ZIndex = 3
+    label.Parent = CmdsList
+
+    label.MouseEnter:Connect(function()
+        if minimized or ConfirmFrame.Visible then return end 
+        Tooltip.Text = description
+        Tooltip.Visible = true
+        
+        if tooltipConnection then tooltipConnection:Disconnect() end
+        tooltipConnection = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local mousePos = UserInputService:GetMouseLocation()
+                Tooltip.Position = UDim2.new(0, mousePos.X + 15, 0, mousePos.Y + 15)
+            end
+        end)
+    end)
+
+    label.MouseLeave:Connect(function()
+        Tooltip.Visible = false
+        if tooltipConnection then
+            tooltipConnection:Disconnect()
+            tooltipConnection = nil
+        end
+    end)
+    
+    table.insert(labelRegistry, {GuiObject = label, Keys = searchKeys})
+end
+
+-- Lista Completa de Comandos
+addCmdLabel("speed [num];", "Modifica la velocidad de caminata limpiando inercias.", {"speed"})
+addCmdLabel("jumppower [num]; / jpower [num];", "Modifica la fuerza o altura de salto del personaje.", {"jumppower", "jpower"})
+addCmdLabel("fly [num];", "Activa el modo de vuelo con desaceleración fluida.", {"fly"})
+addCmdLabel("unfly;", "Desactiva el modo de vuelo y restaura las físicas.", {"unfly"})
+addCmdLabel("freecam; / fc;", "Desconecta la cámara para explorar el mapa estando inmóvil.", {"freecam", "fc"})
+addCmdLabel("unfreecam; / unfc;", "Regresa la cámara de vuelta a tu personaje.", {"unfreecam", "unfc"})
+addCmdLabel("fling [jugador];", "Lanza con fuerza destructiva masiva a un jugador objetivo.", {"fling"})
+addCmdLabel("view [jugador];", "Fija la cámara sobre el jugador con auto-reset al morir.", {"view"})
+addCmdLabel("unview;", "Regresa la cámara a tu propio personaje de forma nativa.", {"unview"})
+addCmdLabel("noclip;", "Atraviesa paredes de forma segura en ciclo PreSimulation.", {"noclip"})
+addCmdLabel("unnoclip;", "Restaura las colisiones normales de tu personaje.", {"unnoclip"})
+addCmdLabel("clicktp; / ctp;", "Te teletransporta dejando un rastro de anillo visual.", {"clicktp", "ctp"})
+addCmdLabel("unclicktp; / unctp;", "Desactiva el teletransporte por clic izquierdo.", {"unclicktp", "unctp"})
+addCmdLabel("fullbright; / fb;", "Ilumina todo el mapa eliminando post-procesados molestos.", {"fullbright", "fb"})
+addCmdLabel("nofog; / nf;", "Quita por completo toda la neblina/fog ambiental.", {"nofog", "nf"})
+addCmdLabel("infjump; / infinitejump;", "Permite saltar infinitamente en el aire.", {"infjump", "infinitejump"})
+addCmdLabel("uninfjump; / uninfinitejump;", "Desactiva el salto infinito.", {"uninfjump", "uninfinitejump"})
+addCmdLabel("esp;", "Revela posición, vida y distancia exacta en studs.", {"esp"})
+addCmdLabel("unesp;", "Desactiva el rastreador de jugadores (ESP).", {"unesp"})
+addCmdLabel("tp [jugador];", "Te teletransporta instantáneamente al jugador.", {"tp"})
+addCmdLabel("rejoin; / rj;", "Te teleconecta y te vuelve a meter al mismo servidor de inmediato.", {"rejoin", "rj"})
+addCmdLabel("btools;", "Crea herramientas de construcción locales optimizadas.", {"btools"})
+addCmdLabel("hb [num];", "Modifica el tamaño de la hitbox de los rivales (Por defecto: 15).", {"hb", "hitbox"})
+addCmdLabel("unhb;", "Restaura las hitboxes de los jugadores al tamaño original.", {"unhb"})
+addCmdLabel("aimbot; / camlock;", "Fija la cámara con suavidad de lerp en la cabeza rival.", {"aimbot", "camlock"})
+addCmdLabel("unaimbot;", "Desactiva el camlock/aimbot.", {"unaimbot"})
+addCmdLabel("spin [vel];", "Activa un giro con velocidad personalizada ajustable.", {"spin"})
+addCmdLabel("unspin;", "Detiene el giro incontrolable de tu personaje.", {"unspin"})
+addCmdLabel("chatspam [texto];", "Envía mensajes masivos evadiendo el filtro de duplicados.", {"chatspam"})
+addCmdLabel("unchatspam;", "Detiene el spam del chat.", {"unchatspam"})
+addCmdLabel("keybind [cmd] [tecla];", "Vincula un comando a una tecla (Ej: keybind fly X).", {"keybind"})
+addCmdLabel("clearbinds;", "Limpia todos los atajos de teclado guardados.", {"clearbinds"})
+addCmdLabel("gravity [num];", "Modifica la gravedad global del mapa localmente.", {"gravity", "grav"})
+addCmdLabel("ungravity;", "Restaura la gravedad predeterminada del juego.", {"ungravity"})
+addCmdLabel("antiafk; / noidle;", "Evita que te expulsen del servidor por inactividad.", {"antiafk", "noidle"})
+addCmdLabel("unantiafk;", "Desactiva la protección anti-inactividad.", {"unantiafk"})
+addCmdLabel("fpscap [num];", "Cambia el límite máximo de FPS permitidos.", {"fpscap"})
+addCmdLabel("serverhop; / sh;", "Te transfiere saltando a servidores públicos óptimos.", {"serverhop", "sh"})
+addCmdLabel("camfov [num];", "Ajusta el FOV de la cámara con transiciones suaves.", {"camfov"})
+addCmdLabel("stats;", "Muestra u oculta el panel de rendimiento (FPS y Ping).", {"stats"})
+
+local function updateScrollLayout()
+    local visibleCount = 0
+    for _, item in ipairs(labelRegistry) do
+        if item.GuiObject.Visible then
+            visibleCount = visibleCount + 1
+        end
+    end
+    CmdsList.CanvasSize = UDim2.new(0, 0, 0, visibleCount * 26)
+end
+
+updateScrollLayout()
+
+CmdBar:GetPropertyChangedSignal("Text"):Connect(function()
+    local rawText = CmdBar.Text
+    if rawText == "" then
+        for _, item in ipairs(labelRegistry) do item.GuiObject.Visible = true end
+    else
+        local query = string.lower(rawText)
+        query = string.gsub(query, "^%s*(.-)%s*$", "%1")
+        if string.sub(query, 1, 1) == ";" then query = string.sub(query, 2) end
+        if string.sub(query, -1) == ";" then query = string.sub(query, 1, -2) end
+        query = string.split(query, " ")[1] or ""
+
+        if query == "" then
+            for _, item in ipairs(labelRegistry) do item.GuiObject.Visible = true end
+        else
+            for _, item in ipairs(labelRegistry) do
+                local matchFound = false
+                for _, key in ipairs(item.Keys) do
+                    if string.find(key, query, 1, true) then
+                        matchFound = true
+                        break
+                    end
+                end
+                item.GuiObject.Visible = matchFound
+            end
+        end
+    end
+    updateScrollLayout()
+end)
+
+local Glow = Instance.new("Frame")
+Glow.Size = UDim2.new(1, 0, 0, 2)
+Glow.Position = UDim2.new(0, 0, 1, 0)
+Glow.BackgroundColor3 = Color3.fromRGB(255, 0, 51)
+Glow.BorderSizePixel = 0
+Glow.ZIndex = 2
+Glow.Parent = MainFrame
+
+local function setMinimizedState(targetMinimized)
+    if ConfirmFrame.Visible then return end
+    minimized = targetMinimized
+    
+    local currentTopEdge = MainFrame.Position.Y.Offset - (MainFrame.Size.Y.Offset / 2)
+    
+    if minimized then
+        MinimizeBtn.Text = "+"
+        Tooltip.Visible = false
+        MainFrame.ClipsDescendants = true
+        local targetY = currentTopEdge + 14
+        local minimizeTween = TweenService:Create(MainFrame, tweenInfo, {
+            Size = UDim2.new(0, 320, 0, 28),
+            Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset, MainFrame.Position.Y.Scale, targetY)
+        })
+        minimizeTween:Play()
+        minimizeTween.Completed:Connect(function()
+            if minimized then
+                CmdBar.Visible = false
+                CmdsList.Visible = false
+            end
+        end)
+    else
+        MinimizeBtn.Text = "-"
+        CmdBar.Visible = true
+        CmdsList.Visible = true
+        local targetY = currentTopEdge + 120
+        local restoreTween = TweenService:Create(MainFrame, tweenInfo, {
+            Size = UDim2.new(0, 320, 0, 240),
+            Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset, MainFrame.Position.Y.Scale, targetY)
+        })
+        restoreTween:Play()
+    end
+end
+
+MinimizeBtn.Activated:Connect(function() setMinimizedState(not minimized) end)
+
+-- Arrastre corregido para recibir input del hijo
+local dragging, dragInput, dragStart, startPos
+local function update(input)
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
 DragHandle.InputBegan:Connect(function(input)
+    if ConfirmFrame.Visible then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+
+DragHandle.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
+    if input == dragInput and dragging then update(input) end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
+local function stopFlying(humanoid)
+    flying = false
+    if flyConnection then flyConnection:Disconnect(); flyConnection = nil end
+    if flyBv then flyBv:Destroy(); flyBv = nil end
+    if flyBg then flyBg:Destroy(); flyBg = nil end
+    if humanoid then humanoid.PlatformStand = false end
+end
+
+local function stopFreecam()
+    freecamActive = false
+    if freecamConnection then freecamConnection:Disconnect(); freecamConnection = nil end
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    Camera.CameraType = Enum.CameraType.Custom
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then Camera.CameraSubject = hum end
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then hrp.Anchored = false end
+end
+
+local function stopNoclip()
+    noclip = false
+    if noclipConnection then noclipConnection:Disconnect(); noclipConnection = nil end
+end
+
+local function stopFullbright()
+    if fullbright then
+        fullbright = false
+        if fullbrightConnection then fullbrightConnection:Disconnect(); fullbrightConnection = nil end
+        Lighting.Ambient = origAmbient
+        Lighting.OutdoorAmbient = origOutdoorAmbient
+        Lighting.Brightness = origBrightness
+        Lighting.GlobalShadows = true
     end
+end
+
+local function stopNofog()
+    nofog = false
+    if nofogConnection then nofogConnection:Disconnect(); nofogConnection = nil end
+    Lighting.FogEnd = origFogEnd
+end
+
+local function stopClickTp()
+    clickTp = false
+    if clickTpConnection then clickTpConnection:Disconnect(); clickTpConnection = nil end
+end
+
+local function stopStats()
+    statsActive = false
+    if statsConnection then statsConnection:Disconnect(); statsConnection = nil end
+    if StatsFrame then StatsFrame:Destroy(); StatsFrame = nil end
+end
+
+local function startStats()
+    if statsActive then return end
+    statsActive = true
+    
+    StatsFrame = Instance.new("Frame")
+    StatsFrame.Name = "c00l_StatsPanel"
+    StatsFrame.Size = UDim2.new(0, 120, 0, 45)
+    StatsFrame.Position = UDim2.new(1, -135, 0, 45)
+    StatsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    StatsFrame.BorderSizePixel = 1
+    StatsFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    StatsFrame.ZIndex = 30
+    StatsFrame.Parent = ScreenGui
+
+    local StatsLabel = Instance.new("TextLabel")
+    StatsLabel.Size = UDim2.new(1, -10, 1, 0)
+    StatsLabel.Position = UDim2.new(0, 5, 0, 0)
+    StatsLabel.BackgroundTransparency = 1
+    StatsLabel.Font = Enum.Font.Code
+    StatsLabel.TextSize = 13
+    StatsLabel.TextColor3 = Color3.fromRGB(255, 51, 51)
+    StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatsLabel.TextYAlignment = Enum.TextYAlignment.Center
+    StatsLabel.Text = "FPS: --\nPING: -- ms"
+    StatsLabel.Parent = StatsFrame
+
+    local lastUpdate = os.clock()
+    local frameCount = 0
+    statsConnection = RunService.RenderStepped:Connect(function()
+        frameCount = frameCount + 1
+        local now = os.clock()
+        if now - lastUpdate >= 0.5 then
+            local fps = math.floor(frameCount / (now - lastUpdate))
+            local ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+            StatsLabel.Text = "FPS: " .. fps .. "\nPING: " .. ping .. " ms"
+            frameCount = 0
+            lastUpdate = now
+        end
+    end)
+end
+
+local function getClosestPlayerToMouse()
+    local closest = nil
+    local shortestDistance = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(p.Character.Head.Position)
+            if onScreen then
+                local distance = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closest = p
+                end
+            end
+        end
+    end
+    return closest
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 5)
+    stopFlying(hum)
+    stopFreecam()
+    stopNoclip()
+    stopClickTp()
+    aimbotActive = false
+    if aimbotConnection then aimbotConnection:Disconnect() end
+    spinbotActive = false
+    Workspace.Gravity = origGravity
 end)
 
--- (El resto del código funcional se mantiene igual...)
--- [Aquí irían tus funciones de botones, comandos y lógica de stats]
--- [Se omitió el resto del cuerpo extenso para mantener la brevedad, pero conserva las funciones previas]
+local function applyESP(player, character)
+    if not character then return end
+    if character:FindFirstChild("c00l_ESP") then return end 
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "c00l_ESP"
+    highlight.FillColor = Color3.fromRGB(255, 0, 51) 
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.6
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = character
+    
+    local head = character:WaitForChild("Head", 5) or character:FindFirstChild("Head")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    if head and humanoid then
+        local bbg = Instance.new("BillboardGui")
+        bbg.Name = "c00l_ESP_Tag"
+        bbg.Size = UDim2.new(0, 300, 0, 45) 
+        bbg.StudsOffset = Vector3.new(0, 3.5, 0) 
+        bbg.AlwaysOnTop = true
+        bbg.Parent = head
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.Font = Enum.Font.Code
+        label.TextSize = 16 
+        label.TextColor3 = Color3.fromRGB(255, 51, 51)
+        label.TextStrokeTransparency = 0
+        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        label.TextXAlignment = Enum.TextXAlignment.Center 
+        label.TextYAlignment = Enum.TextYAlignment.Center 
+        label.Parent = bbg
+        
+        local function updateTag()
+            if humanoid and label and bbg and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
+                local currentHp = math.floor(humanoid.Health)
+                local maxHp = math.floor(humanoid.MaxHealth)
+                local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Magnitude)
+                label.Text = player.Name .. "\n[" .. currentHp .. "/" .. maxHp .. " HP] • " .. dist .. "s"
+            end
+        end
+        
+        local renderConn = RunService.RenderStepped:Connect(updateTag)
+        table.insert(espConnections, renderConn)
+    end
+end
+
+local function startESP()
+    if espActive then return end
+    espActive = true
+    local function listenToPlayer(player)
+        if player == LocalPlayer then return end
+        if player.Character then applyESP(player, player.Character) end
+        local charConnection = player.CharacterAdded:Connect(function(char)
+            if espActive then applyESP(player, char) end
+        end)
+        table.insert(espConnections, charConnection)
+    end
+    for _, player in ipairs(Players:GetPlayers()) do listenToPlayer(player) end
+    local playerAddedConnection = Players.PlayerAdded:Connect(listenToPlayer)
+    table.insert(espConnections, playerAddedConnection)
+end
+
+local function stopESP()
+    espActive = false
+    for _, connection in ipairs(espConnections) do connection:Disconnect() end
+    espConnections = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character then
+            local highlight = player.Character:FindFirstChild("c00l_ESP")
+            if highlight then highlight:Destroy() end
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                local bbg = head:FindFirstChild("c00l_ESP_Tag")
+                if bbg then bbg:Destroy() end
+            end
+        end
+    end
+end
+
+CloseBtn.Activated:Connect(function()
+    if ConfirmFrame.Visible then return end
+    Tooltip.Visible = false
+    ConfirmFrame.Size = UDim2.new(0, 0, 0, 0)
+    ConfirmFrame.Visible = true
+    TweenService:Create(ConfirmFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 230, 0, 110)}):Play()
+end)
+
+NoBtn.Activated:Connect(function()
+    local closeConfirm = TweenService:Create(ConfirmFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
+    closeConfirm:Play()
+    closeConfirm.Completed:Connect(function() ConfirmFrame.Visible = false end)
+end)
+
+YesBtn.Activated:Connect(function()
+    ConfirmFrame.Visible = false
+    CloseBtn.Active = false
+    MinimizeBtn.Active = false
+    LogsBtn.Active = false
+    
+    local closeAudio = Instance.new("Sound")
+    closeAudio.SoundId = "rbxassetid://138413132442066"
+    closeAudio.Volume = 0.6
+    closeAudio.Parent = game:GetService("SoundService")
+    closeAudio:Play()
+
+    local CloseSubtitleLabel = Instance.new("TextLabel")
+    CloseSubtitleLabel.Name = "c00l_CloseSubtitle"
+    CloseSubtitleLabel.Size = UDim2.new(0, 600, 0, 40)
+    CloseSubtitleLabel.Position = UDim2.new(0.5, -300, 0.9, 0)
+    CloseSubtitleLabel.BackgroundTransparency = 1
+    CloseSubtitleLabel.Font = Enum.Font.Code
+    CloseSubtitleLabel.Text = ""
+    CloseSubtitleLabel.TextColor3 = Color3.fromRGB(255, 0, 51)
+    CloseSubtitleLabel.TextSize = 26
+    CloseSubtitleLabel.TextTransparency = 0
+    CloseSubtitleLabel.TextStrokeTransparency = 0
+    CloseSubtitleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    CloseSubtitleLabel.ZIndex = 100
+    CloseSubtitleLabel.Parent = ScreenGui
+
+    local closeIntroTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, -300, 0.82, 0)
+    })
+    closeIntroTween:Play()
+
+    task.spawn(function()
+        local fullText = "*Risas* Let’s do that again sometime!"
+        for i = 1, #fullText do
+            CloseSubtitleLabel.Text = string.sub(fullText, 1, i)
+            task.wait(0.04) 
+        end
+    end)
+
+    local closePhase1 = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 320, 0, 2)})
+    local closePhase2 = TweenService:Create(MainFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 2)})
+    
+    closePhase1.Completed:Connect(function()
+        TitleBar.Visible = false
+        closePhase2:Play()
+    end)
+    
+    closePhase2.Completed:Connect(function()
+        local character = LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        stopFlying(humanoid)
+        stopFreecam()
+        stopNoclip()
+        stopFullbright()
+        stopNofog()
+        stopClickTp()
+        stopStats()
+        
+        infJump = false
+        if infJumpConnection then infJumpConnection:Disconnect(); infJumpConnection = nil end
+        stopESP()
+        
+        if aimbotConnection then aimbotConnection:Disconnect() end
+        if antiAfkConnection then antiAfkConnection:Disconnect() end
+        chatSpamActive = false
+        Workspace.Gravity = origGravity
+        
+        if hrp and hrp:FindFirstChild("SpinBotVelocity") then
+            hrp.SpinBotVelocity:Destroy()
+        end
+
+        if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
+        if tooltipConnection then tooltipConnection:Disconnect(); tooltipConnection = nil end
+        LogsFrame:Destroy()
+        MainFrame:Destroy()
+    end)
+
+    -- La animación del GUI corre un segundo antes de que termine el tiempo total del diálogo (a los 3.5 segundos)
+    task.delay(3.5, function()
+        CmdBar.Visible = false
+        CmdsList.Visible = false
+        closePhase1:Play()
+    end)
+    
+    -- El sonido y los subtítulos terminan de desvanecerse por completo a los 4.5 segundos
+    task.delay(4.5, function()
+        local fadeTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Connect(function()
+            CloseSubtitleLabel:Destroy()
+            closeAudio:Destroy()
+            ScreenGui:Destroy()
+        end)
+    end)
+end)
+
+local function spawnSuccessPopup()
+    local successAudio = Instance.new("Sound")
+    successAudio.SoundId = "rbxassetid://12221967"
+    successAudio.Volume = 0.6
+    successAudio.Parent = game:GetService("SoundService")
+    successAudio:Play()
+    task.delay(3, function() successAudio:Destroy() end)
+
+    local PopFrame = Instance.new("Frame")
+    PopFrame.Name = "SuccessPopup"
+    local rx = Random.new():NextNumber(0.05, 0.8)
+    local ry = Random.new():NextNumber(0.05, 0.8)
+    
+    PopFrame.Position = UDim2.new(rx, 0, ry, 0)
+    PopFrame.Size = UDim2.new(0, 0, 0, 0) 
+    PopFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    PopFrame.BorderSizePixel = 2 
+    PopFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    PopFrame.ZIndex = 60
+    PopFrame.ClipsDescendants = true 
+    PopFrame.Parent = ScreenGui
+
+    local PopTitle = Instance.new("TextLabel")
+    PopTitle.Size = UDim2.new(0, 140, 0, 18) 
+    PopTitle.BackgroundColor3 = Color3.fromRGB(255, 0, 51)
+    PopTitle.BackgroundTransparency = 0.9 
+    PopTitle.BorderSizePixel = 1
+    PopTitle.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    PopTitle.Font = Enum.Font.Code
+    PopTitle.Text = "  Answer"
+    PopTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PopTitle.TextSize = 11
+    PopTitle.TextXAlignment = Enum.TextXAlignment.Left
+    PopTitle.ZIndex = 61
+    PopTitle.Parent = PopFrame
+
+    local PopText = Instance.new("TextLabel")
+    PopText.Size = UDim2.new(0, 140, 0, 47)
+    PopText.Position = UDim2.new(0, 0, 0, 18)
+    PopText.BackgroundTransparency = 1
+    PopText.Font = Enum.Font.Code
+    local alertMsgs = {"XDD", "H4CKED", "LMAO", "EZ CLAP", "OWNED"}
+    PopText.Text = alertMsgs[Random.new():NextInteger(1, #alertMsgs)]
+    PopText.TextColor3 = Color3.fromRGB(255, 0, 51) 
+    PopText.TextSize = 13
+    PopText.ZIndex = 61
+    PopText.Parent = PopFrame
+
+    local appearTween = TweenService:Create(PopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 140, 0, 65)
+    })
+    appearTween:Play()
+
+    task.delay(2, function()
+        if PopFrame then
+            local fallTween = TweenService:Create(PopFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(rx, 0, 1.2, 0)
+            })
+            fallTween:Play()
+            fallTween.Completed:Connect(function() PopFrame:Destroy() end)
+        end
+    end)
+end
+
+local function spawnErrorPopup(errorText)
+    local errorAudio = Instance.new("Sound")
+    errorAudio.SoundId = "rbxassetid://12221967"
+    errorAudio.Volume = 0.6
+    errorAudio.Parent = game:GetService("SoundService")
+    errorAudio:Play()
+    task.delay(3, function() errorAudio:Destroy() end)
+
+    local PopFrame = Instance.new("Frame")
+    PopFrame.Name = "ErrorPopup"
+    local rx = Random.new():NextNumber(0.05, 0.8)
+    local ry = Random.new():NextNumber(0.05, 0.8)
+    
+    PopFrame.Position = UDim2.new(rx, 0, ry, 0)
+    PopFrame.Size = UDim2.new(0, 0, 0, 0) 
+    PopFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    PopFrame.BorderSizePixel = 2 
+    PopFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    PopFrame.ZIndex = 60
+    PopFrame.ClipsDescendants = true 
+    PopFrame.Parent = ScreenGui
+
+    local PopTitle = Instance.new("TextLabel")
+    PopTitle.Size = UDim2.new(0, 140, 0, 18) 
+    PopTitle.BackgroundColor3 = Color3.fromRGB(255, 0, 51)
+    PopTitle.BackgroundTransparency = 0.9 
+    PopTitle.BorderSizePixel = 1
+    PopTitle.BorderColor3 = Color3.fromRGB(255, 0, 51)
+    PopTitle.Font = Enum.Font.Code
+    PopTitle.Text = "  error"
+    PopTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PopTitle.TextSize = 11
+    PopTitle.TextXAlignment = Enum.TextXAlignment.Left
+    PopTitle.ZIndex = 61
+    PopTitle.Parent = PopFrame
+
+    local PopText = Instance.new("TextLabel")
+    PopText.Size = UDim2.new(0, 140, 0, 47)
+    PopText.Position = UDim2.new(0, 0, 0, 18)
+    PopText.BackgroundTransparency = 1
+    PopText.Font = Enum.Font.Code
+    PopText.Text = string.lower(errorText)
+    PopText.TextColor3 = Color3.fromRGB(255, 0, 51) 
+    PopText.TextSize = 12
+    PopText.TextWrapped = true
+    PopText.ZIndex = 61
+    PopText.Parent = PopFrame
+
+    local appearTween = TweenService:Create(PopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 140, 0, 65)
+    })
+    appearTween:Play()
+
+    task.delay(2, function()
+        if PopFrame then
+            local fallTween = TweenService:Create(PopFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(rx, 0, 1.2, 0)
+            })
+            fallTween:Play()
+            fallTween.Completed:Connect(function() PopFrame:Destroy() end)
+        end
+    end)
+end
+
+------------------------------------------------------------------------
+-- PROCESADOR DE COMANDOS 
+------------------------------------------------------------------------
+local VALID_COMMANDS = {
+    ["speed"] = true, ["jumppower"] = true, ["jpower"] = true, ["fly"] = true, ["unfly"] = true, 
+    ["freecam"] = true, ["fc"] = true, ["unfreecam"] = true, ["unfc"] = true,
+    ["fling"] = true, ["esp"] = true, ["unesp"] = true,
+    ["view"] = true, ["unview"] = true,
+    ["infinitejump"] = true, ["infjump"] = true, ["uninfinitejump"] = true, ["uninfjump"] = true,
+    ["tp"] = true, ["rejoin"] = true, ["rj"] = true, ["btools"] = true,
+    ["noclip"] = true, ["unnoclip"] = true,
+    ["fullbright"] = true, ["unfullbright"] = true, ["fb"] = true, ["unfb"] = true,
+    ["nofog"] = true, ["unnofog"] = true, ["nf"] = true, ["unnf"] = true,
+    ["clicktp"] = true, ["ctp"] = true, ["unclicktp"] = true, ["unctp"] = true,
+    ["hb"] = true, ["unhb"] = true, ["aimbot"] = true, ["camlock"] = true, ["unaimbot"] = true,
+    ["spin"] = true, ["unspin"] = true,
+    ["chatspam"] = true, ["unchatspam"] = true, ["keybind"] = true, ["clearbinds"] = true,
+    ["gravity"] = true, ["ungravity"] = true, ["antiafk"] = true, ["noidle"] = true, ["unantiafk"] = true,
+    ["fpscap"] = true, ["serverhop"] = true, ["sh"] = true, ["camfov"] = true, ["stats"] = true
+}
+
+local function executeCommand(rawTextString)
+    if rawTextString == "" or ConfirmFrame.Visible then return false, "error", "" end
+    
+    local cleanedRaw = string.gsub(rawTextString, "^%s*(.-)%s*$", "%1")
+    local input = string.lower(cleanedRaw)
+    
+    local commandFound = false
+    local errorMessage = "comando inexistente." 
+    local hasSemicolon = false
+    local cleanCommandString = input
+    
+    if string.sub(input, 1, 1) == ";" then
+        hasSemicolon = true
+        cleanCommandString = string.sub(input, 2)
+    elseif string.sub(input, -1) == ";" then
+        hasSemicolon = true
+        cleanCommandString = string.sub(input, 1, -2)
+    end
+    
+    cleanCommandString = string.gsub(cleanCommandString, "^%s*(.-)%s*$", "%1")
+    local args = string.split(cleanCommandString, " ")
+    local cmd = args[1]
+    
+    local isValidRejoin = (cmd == "rejoin" or cmd == "rj")
+    local isOtherCommand = (not isValidRejoin) and VALID_COMMANDS[cmd]
+
+    if isOtherCommand or isValidRejoin then
+        if hasSemicolon then
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            
+            if humanoid and hrp then
+                if cmd == "speed" then
+                    local amount = tonumber(args[2])
+                    if amount then 
+                        commandFound = true
+                        hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0)
+                        humanoid.WalkSpeed = amount 
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "jumppower" or cmd == "jpower" then
+                    local amount = tonumber(args[2])
+                    if amount then 
+                        commandFound = true
+                        humanoid.UseJumpPower = true 
+                        humanoid.JumpPower = amount 
+                        humanoid.JumpHeight = amount / 3.5
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "btools" then
+                    commandFound = true
+                    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+                    if backpack then
+                        for i = 1, 3 do
+                            local tool = Instance.new("HopperBin")
+                            tool.BinType = i
+                            tool.Parent = backpack
+                        end
+                    end
+                elseif cmd == "rejoin" or cmd == "rj" then
+                    commandFound = true
+                    local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
+                    if queue and getgenv().c00l_raw then queue(getgenv().c00l_raw) end
+                    game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+                
+                elseif cmd == "esp" then commandFound = true; startESP()
+                elseif cmd == "unesp" then commandFound = true; stopESP()
+
+                elseif cmd == "view" then
+                    local targetName = args[2]
+                    if targetName then
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer then
+                                local nameMatch = string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName
+                                local dispMatch = p.DisplayName and (string.sub(string.lower(p.DisplayName), 1, string.len(targetName)) == targetName)
+                                
+                                if (nameMatch or dispMatch) then
+                                    commandFound = true
+                                    viewingPlayer = p
+                                    if viewConnection then viewConnection:Disconnect() end
+                                    
+                                    viewConnection = RunService.RenderStepped:Connect(function()
+                                        if viewingPlayer == p and p.Parent and p.Character then
+                                            Camera.CameraType = Enum.CameraType.Custom
+                                            local targetHum = p.Character:FindFirstChildOfClass("Humanoid")
+                                            if targetHum and targetHum.Health > 0 then 
+                                                Camera.CameraSubject = targetHum
+                                            else
+                                                Camera.CameraSubject = humanoid
+                                            end
+                                        else
+                                            viewingPlayer = nil
+                                            Camera.CameraSubject = humanoid
+                                            if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
+                                        end
+                                    end)
+                                    break
+                                end
+                            end
+                        end
+                    end
+
+                elseif cmd == "unview" then
+                    commandFound = true
+                    viewingPlayer = nil
+                    if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
+                    Camera.CameraType = Enum.CameraType.Custom
+                    Camera.CameraSubject = humanoid
+
+                elseif cmd == "freecam" or cmd == "fc" then
+                    commandFound = true
+                    if not freecamActive then
+                        freecamActive = true
+                        if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
+                        viewingPlayer = nil
+                        Camera.CameraType = Enum.CameraType.Scriptable
+                        hrp.Anchored = true
+                        
+                        local p, y, r = Camera.CFrame:ToOrientation()
+                        freecamPitch = p
+                        freecamYaw = y
+                        
+                        freecamConnection = RunService.RenderStepped:Connect(function()
+                            if not freecamActive then return end
+                            if UserInputService:GetFocusedTextBox() then 
+                                UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                                return 
+                            end
+                            
+                            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+                                local delta = UserInputService:GetMouseDelta()
+                                freecamYaw = freecamYaw - math.rad(delta.X * 0.25)
+                                freecamPitch = math.clamp(freecamPitch - math.rad(delta.Y * 0.25), -math.rad(85), math.rad(85))
+                            else
+                                UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                            end
+                            Camera.CFrame = CFrame.new(Camera.CFrame.Position) * CFrame.fromOrientation(freecamPitch, freecamYaw, 0)
+                            
+                            local moveDir = Vector3.new(0, 0, 0)
+                            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + Camera.CFrame.LookVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - Camera.CFrame.LookVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                            
+                            if moveDir.Magnitude > 0 then
+                                Camera.CFrame = Camera.CFrame + (moveDir.Unit * (flySpeed * 0.03))
+                            end
+                        end)
+                    end
+
+                elseif cmd == "unfreecam" or cmd == "unfc" then commandFound = true; stopFreecam()
+                elseif cmd == "fling" then
+                    local targetName = args[2]
+                    if targetName then
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName then
+                                if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    commandFound = true
+                                    local targetHrp = p.Character.HumanoidRootPart
+                                    local oldCFrame = hrp.CFrame
+                                    local bav = Instance.new("BodyAngularVelocity")
+                                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                                    bav.AngularVelocity = Vector3.new(0, 999999, 0)
+                                    bav.Parent = hrp
+                                    
+                                    local startTime = os.clock()
+                                    local flingLoop
+                                    flingLoop = RunService.Heartbeat:Connect(function()
+                                        if os.clock() - startTime > 1.5 or not hrp or not targetHrp or not targetHrp.Parent then
+                                            if flingLoop then flingLoop:Disconnect() end
+                                            if bav then bav:Destroy() end
+                                            if hrp then
+                                                hrp.CFrame = oldCFrame
+                                                hrp.Velocity = Vector3.new(0,0,0)
+                                                hrp.RotVelocity = Vector3.new(0,0,0)
+                                            end
+                                        else
+                                            hrp.CFrame = targetHrp.CFrame * CFrame.new(math.random(-2, 2)/10, 0, math.random(-2, 2)/10)
+                                            hrp.Velocity = Vector3.new(9e9, 9e9, 9e9)
+                                        end
+                                    end)
+                                    break
+                                end
+                            end
+                        end
+                    end
+
+                elseif cmd == "fullbright" or cmd == "fb" then
+                    commandFound = true
+                    if not fullbright then
+                        fullbright = true
+                        fullbrightConnection = RunService.RenderStepped:Connect(function()
+                            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+                            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+                            Lighting.Brightness = 2
+                            Lighting.GlobalShadows = false
+                            local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+                            if atm then atm.Density = 0 end
+                        end)
+                    end
+                elseif cmd == "unfullbright" or cmd == "unfb" then commandFound = true; stopFullbright()
+                elseif cmd == "nofog" or cmd == "nf" then
+                    commandFound = true
+                    if not nofog then
+                        nofog = true
+                        nofogConnection = RunService.RenderStepped:Connect(function() Lighting.FogEnd = 9e9 end)
+                    end
+                elseif cmd == "unnofog" or cmd == "unnf" then commandFound = true; stopNofog()
+                elseif cmd == "clicktp" or cmd == "ctp" then
+                    commandFound = true
+                    if not clickTp then
+                        clickTp = true
+                        clickTpConnection = Mouse.Button1Down:Connect(function()
+                            if Mouse.Hit and hrp then 
+                                local targetPos = Mouse.Hit.Position + Vector3.new(0, 3, 0)
+                                hrp.CFrame = CFrame.new(targetPos)
+                                
+                                local Ring = Instance.new("Part")
+                                Ring.Size = Vector3.new(1, 0.2, 1)
+                                Ring.Position = targetPos - Vector3.new(0, 2, 0)
+                                Ring.Anchored = true
+                                Ring.CanCollide = false
+                                Ring.Color = Color3.fromRGB(255, 0, 51)
+                                Ring.Material = Enum.Material.Neon
+                                Ring.Shape = Enum.PartType.Cylinder
+                                Ring.Orientation = Vector3.new(0, 0, 90)
+                                Ring.Parent = Workspace
+                                
+                                TweenService:Create(Ring, TweenInfo.new(0.4), {Size = Vector3.new(0.2, 8, 8), Transparency = 1}):Play()
+                                task.delay(0.4, function() Ring:Destroy() end)
+                            end
+                        end)
+                    end
+                elseif cmd == "unclicktp" or cmd == "unctp" then commandFound = true; stopClickTp()
+                elseif cmd == "noclip" then
+                    commandFound = true
+                    if not noclip then
+                        noclip = true
+                        noclipConnection = RunService.PreSimulation:Connect(function()
+                            if noclip and character then
+                                for _, part in ipairs(character:GetDescendants()) do
+                                    if part:IsA("BasePart") then part.CanCollide = false end
+                                end
+                            else stopNoclip() end
+                        end)
+                    end
+                elseif cmd == "unnoclip" then commandFound = true; stopNoclip()
+                elseif cmd == "infinitejump" or cmd == "infjump" then
+                    commandFound = true
+                    if not infJump then
+                        infJump = true
+                        infJumpConnection = UserInputService.JumpRequest:Connect(function()
+                            if infJump and character then
+                                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                            end
+                        end)
+                    end
+                elseif cmd == "uninfinitejump" or cmd == "uninfjump" then
+                    commandFound = true
+                    infJump = false
+                    if infJumpConnection then infJumpConnection:Disconnect(); infJumpConnection = nil end
+                elseif cmd == "fly" then
+                    local multiplier = tonumber(args[2])
+                    if multiplier then
+                        flySpeed = multiplier * 50
+                        commandFound = true
+                        if not flying then
+                            flying = true
+                            humanoid.PlatformStand = true
+                            flyBv = Instance.new("BodyVelocity")
+                            flyBv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
+                            flyBv.Velocity = Vector3.new(0, 0, 0)
+                            flyBv.Parent = hrp
+                            flyBg = Instance.new("BodyGyro")
+                            flyBg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
+                            flyBg.CFrame = hrp.CFrame
+                            flyBg.Parent = hrp
+                            
+                            flyConnection = RunService.RenderStepped:Connect(function()
+                                if not flying or not hrp or not hrp.Parent or not humanoid then stopFlying(humanoid); return end
+                                flyBg.CFrame = Camera.CFrame
+                                local direction = Vector3.new(0, 0, 0)
+                                if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction = direction + Camera.CFrame.LookVector end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction = direction - Camera.CFrame.LookVector end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction = direction - Camera.CFrame.RightVector end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction = direction + Camera.CFrame.RightVector end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction = direction + Vector3.new(0, 1, 0) end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction = direction - Vector3.new(0, 1, 0) end
+                                
+                                local targetVelocity = (direction.Magnitude > 0) and (direction.Unit * flySpeed) or Vector3.new(0,0,0)
+                                flyBv.Velocity = flyBv.Velocity:Lerp(targetVelocity, 0.2)
+                            end)
+                        end
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "unfly" then commandFound = true; stopFlying(humanoid)
+                elseif cmd == "tp" then
+                    local targetName = args[2]
+                    if targetName then
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName then
+                                if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    commandFound = true
+                                    if hrp then hrp.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3) end
+                                    break
+                                end
+                            end
+                        end
+                    end
+                
+                elseif cmd == "hb" then
+                    local size = tonumber(args[2])
+                    if size then
+                        hitboxSize = size
+                        commandFound = true
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                p.Character.HumanoidRootPart.Size = Vector3.new(size, size, size)
+                                p.Character.HumanoidRootPart.Transparency = size > 2 and 0.7 or 0
+                                p.Character.HumanoidRootPart.CanCollide = false
+                            end
+                        end
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "unhb" then
+                    commandFound = true
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            p.Character.HumanoidRootPart.Size = Vector3.new(2, 2, 2)
+                            p.Character.HumanoidRootPart.Transparency = 0
+                            p.Character.HumanoidRootPart.CanCollide = true
+                        end
+                    end
+                elseif cmd == "aimbot" or cmd == "camlock" then
+                    commandFound = true
+                    if not aimbotActive then
+                        aimbotActive = true
+                        aimbotConnection = RunService.RenderStepped:Connect(function()
+                            local target = getClosestPlayerToMouse()
+                            if target and target.Character and target.Character:FindFirstChild("Head") then
+                                local targetCFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+                                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.25)
+                            end
+                        end)
+                    end
+                elseif cmd == "unaimbot" or cmd == "uncamlock" then
+                    commandFound = true
+                    if aimbotActive then
+                        aimbotActive = false
+                        if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection = nil end
+                    end
+                elseif cmd == "spin" then
+                    local speed = tonumber(args[2])
+                    if speed then
+                        if hrp then
+                            if hrp:FindFirstChild("SpinBotVelocity") then hrp.SpinBotVelocity:Destroy() end
+                            spinbotActive = true
+                            spinVelocity = Instance.new("BodyAngularVelocity")
+                            spinVelocity.Name = "SpinBotVelocity"
+                            spinVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
+                            spinVelocity.AngularVelocity = Vector3.new(0, speed, 0)
+                            spinVelocity.Parent = hrp
+                            commandFound = true
+                        end
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "unspin" then
+                    commandFound = true
+                    spinbotActive = false
+                    if hrp and hrp:FindFirstChild("SpinBotVelocity") then
+                        hrp.SpinBotVelocity:Destroy()
+                    end
+                elseif cmd == "chatspam" then
+                    commandFound = true
+                    local message = cleanCommandString:sub(10)
+                    if message == "" then message = "c00lgui Legacy running" end
+                    if chatSpamActive then chatSpamActive = false end
+                    task.wait(0.1)
+                    chatSpamActive = true
+                    chatSpamTask = task.spawn(function()
+                        while chatSpamActive do
+                            local bypassStr = message .. " [" .. tostring(math.random(100,999)) .. "]"
+                            local textChannel = game:GetService("TextChatService"):FindFirstChild("TextChannels") and game:GetService("TextChatService").TextChannels:FindFirstChild("RBXGeneral")
+                            if textChannel then textChannel:SendAsync(bypassStr)
+                            else
+                                local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents") and game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
+                                if chatEvent then chatEvent:FireServer(bypassStr, "All") end
+                            end
+                            task.wait(0.7)
+                        end
+                    end)
+                elseif cmd == "unchatspam" then
+                    commandFound = true
+                    chatSpamActive = false
+                elseif cmd == "keybind" then
+                    commandFound = true
+                    local cmdToBind = args[2]
+                    local keyStr = args[3] and args[3]:upper()
+                    if cmdToBind and keyStr then
+                        local success, keyCode = pcall(function() return Enum.KeyCode[keyStr] end)
+                        if success and keyCode then
+                            keybinds[keyCode] = ";" .. cmdToBind .. ";"
+                        end
+                    end
+                elseif cmd == "clearbinds" then
+                    commandFound = true
+                    table.clear(keybinds)
+
+                elseif cmd == "gravity" or cmd == "grav" then
+                    local targetGrav = tonumber(args[2])
+                    if targetGrav then
+                        commandFound = true
+                        Workspace.Gravity = targetGrav
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "ungravity" then
+                    commandFound = true
+                    Workspace.Gravity = origGravity
+                elseif cmd == "antiafk" or cmd == "noidle" then
+                    commandFound = true
+                    if not antiAfkConnection then
+                        antiAfkConnection = LocalPlayer.Idled:Connect(function()
+                            local virtualUser = game:GetService("VirtualUser")
+                            virtualUser:Button2Down(Vector2.new(0,0), Camera.CFrame)
+                            task.wait(1)
+                            virtualUser:Button2Up(Vector2.new(0,0), Camera.CFrame)
+                        end)
+                    end
+                elseif cmd == "unantiafk" then
+                    commandFound = true
+                    if antiAfkConnection then
+                        antiAfkConnection:Disconnect()
+                        antiAfkConnection = nil
+                    end
+                elseif cmd == "fpscap" then
+                    local cap = tonumber(args[2])
+                    if cap and setfpscap then
+                        commandFound = true
+                        setfpscap(cap)
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                
+                elseif cmd == "serverhop" or cmd == "sh" then
+                    commandFound = true
+                    local servers = {}
+                    local reqUrl = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+                    local ok, res = pcall(function() return HttpService:JSONDecode(game:HttpGet(reqUrl)) end)
+                    if ok and res and res.data then
+                        for _, server in ipairs(res.data) do
+                            if type(server) == "table" and server.id ~= game.JobId and server.playing < server.maxPlayers and server.playing > 2 then
+                                table.insert(servers, server.id)
+                            end
+                        end
+                        if #servers > 0 then
+                            local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
+                            if queue and getgenv().c00l_raw then queue(getgenv().c00l_raw) end
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+                        end
+                    end
+                elseif cmd == "camfov" then
+                    local targetFov = tonumber(args[2])
+                    if targetFov then
+                        commandFound = true
+                        TweenService:Create(Camera, TweenInfo.new(0.2), {FieldOfView = targetFov}):Play()
+                    else
+                        errorMessage = "falta un numero."
+                    end
+                elseif cmd == "stats" then
+                    commandFound = true
+                    if statsActive then stopStats() else startStats() end
+                end
+            end
+        else errorMessage = "requiere ; para su función." end
+    else errorMessage = "comando inexistente." end
+    
+    return commandFound, errorMessage, cleanCommandString
+end
+
+CmdBar.FocusLost:Connect(function(enterPressed)
+    if not enterPressed or CmdBar.Text == "" or ConfirmFrame.Visible then return end
+    
+    local commandFound, errorMessage, cleanCommandString = executeCommand(CmdBar.Text)
+    
+    if commandFound then
+        addLog(cleanCommandString)
+        CmdBar.BorderColor3 = Color3.fromRGB(0, 255, 100)
+        CmdBar.PlaceholderText = "escribe tu comando."
+        spawnSuccessPopup() 
+    else
+        CmdBar.BorderColor3 = Color3.fromRGB(255, 0, 0)
+        CmdBar.PlaceholderText = errorMessage
+        spawnErrorPopup(errorMessage)
+    end
+    task.delay(0.4, function() CmdBar.BorderColor3 = Color3.fromRGB(100, 0, 20) end)
+    CmdBar.Text = ""
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Semicolon then
+        if minimized then setMinimizedState(false) end
+        task.wait()
+        CmdBar:CaptureFocus()
+        CmdBar.Text = "" 
+    elseif keybinds[input.KeyCode] then
+        local commandFound = executeCommand(keybinds[input.KeyCode])
+        if commandFound then spawnSuccessPopup() end
+    end
+end)
 
 local startupPhase1 = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 320, 0, 2)})
 local startupPhase2 = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 320, 0, 240)})
 
-startupPhase1.Completed:Connect(function() TitleBar.Visible = true; startupPhase2:Play() end)
-startupPhase1:Play()
+startupPhase1.Completed:Connect(function()
+    TitleBar.Visible = true
+    CmdBar.Visible = true
+    CmdsList.Visible = true
+    startupPhase2:Play()
+end)
 
+if not game:IsLoaded() then game.Loaded:Wait() end
+task.wait(1.2)
+MainFrame.Size = UDim2.new(0, 0, 0, 2) 
+
+local soundIdsList = {"81547863237038", "108040909444723", "140669499902711", "94262129366372"}
+local subtitlesMap = {
+    ["81547863237038"] = "Ready or not? Here we come!",
+    ["108040909444723"] = "Your getting a raise!",
+    ["140669499902711"] = "*Risas*",
+    ["94262129366372"] = "*Risas* Order up!"
+}
+
+local randomSoundId = soundIdsList[Random.new():NextInteger(1, #soundIdsList)]
+local bootAudio = Instance.new("Sound")
+bootAudio.SoundId = "rbxassetid://" .. randomSoundId
+bootAudio.Volume = 0.6
+bootAudio.Parent = game:GetService("SoundService")
+bootAudio:Play()
+
+local SubtitleLabel = Instance.new("TextLabel")
+SubtitleLabel.Name = "c00l_Subtitle"
+SubtitleLabel.Size = UDim2.new(0, 600, 0, 40)
+SubtitleLabel.Position = UDim2.new(0.5, -300, 0.9, 0)
+SubtitleLabel.BackgroundTransparency = 1
+SubtitleLabel.Font = Enum.Font.Code
+SubtitleLabel.Text = ""
+SubtitleLabel.TextColor3 = Color3.fromRGB(255, 0, 51)
+SubtitleLabel.TextSize = 26
+SubtitleLabel.TextTransparency = 0
+SubtitleLabel.TextStrokeTransparency = 0
+SubtitleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+SubtitleLabel.ZIndex = 100
+SubtitleLabel.Parent = ScreenGui
+
+local introTween = TweenService:Create(SubtitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Position = UDim2.new(0.5, -300, 0.82, 0)
+})
+introTween:Play()
+
+task.spawn(function()
+    local fullText = subtitlesMap[randomSoundId]
+    for i = 1, #fullText do
+        SubtitleLabel.Text = string.sub(fullText, 1, i)
+        task.wait(0.04) 
+    end
+end)
+
+task.delay(4.5, function()
+    TweenService:Create(SubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+    task.wait(0.5)
+    SubtitleLabel:Destroy()
+    bootAudio:Destroy()
+end)
+
+startupPhase1:Play()
 ]==]
+
+getgenv().c00l_raw = "getgenv().c00l_raw = [==[" .. src .. "]==]\n" .. src
 loadstring(src)()
