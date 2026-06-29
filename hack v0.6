@@ -720,6 +720,40 @@ YesBtn.Activated:Connect(function()
     CmdBar.Visible = false
     CmdsList.Visible = false
     
+    local closeAudio = Instance.new("Sound")
+    closeAudio.SoundId = "rbxassetid://138413132442066"
+    closeAudio.Volume = 0.6
+    closeAudio.Parent = game:GetService("SoundService")
+    closeAudio:Play()
+
+    local CloseSubtitleLabel = Instance.new("TextLabel")
+    CloseSubtitleLabel.Name = "c00l_CloseSubtitle"
+    CloseSubtitleLabel.Size = UDim2.new(0, 600, 0, 40)
+    CloseSubtitleLabel.Position = UDim2.new(0.5, -300, 0.9, 0)
+    CloseSubtitleLabel.BackgroundTransparency = 1
+    CloseSubtitleLabel.Font = Enum.Font.Code
+    CloseSubtitleLabel.Text = ""
+    CloseSubtitleLabel.TextColor3 = Color3.fromRGB(255, 0, 51)
+    CloseSubtitleLabel.TextSize = 26
+    CloseSubtitleLabel.TextTransparency = 0
+    CloseSubtitleLabel.TextStrokeTransparency = 0
+    CloseSubtitleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    CloseSubtitleLabel.ZIndex = 100
+    CloseSubtitleLabel.Parent = ScreenGui
+
+    local closeIntroTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, -300, 0.82, 0)
+    })
+    closeIntroTween:Play()
+
+    task.spawn(function()
+        local fullText = "*Risas* Let’s do that again sometime!"
+        for i = 1, #fullText do
+            CloseSubtitleLabel.Text = string.sub(fullText, 1, i)
+            task.wait(0.04) 
+        end
+    end)
+
     local closePhase1 = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 320, 0, 2)})
     local closePhase2 = TweenService:Create(MainFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 2)})
     
@@ -756,7 +790,16 @@ YesBtn.Activated:Connect(function()
         if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
         if tooltipConnection then tooltipConnection:Disconnect(); tooltipConnection = nil end
         LogsFrame:Destroy()
-        ScreenGui:Destroy()
+        
+        task.delay(4.5, function()
+            local fadeTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
+            fadeTween:Play()
+            fadeTween.Completed:Connect(function()
+                CloseSubtitleLabel:Destroy()
+                closeAudio:Destroy()
+                ScreenGui:Destroy()
+            end)
+        end)
     end)
     closePhase1:Play()
 end)
