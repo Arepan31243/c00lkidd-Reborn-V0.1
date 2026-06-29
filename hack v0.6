@@ -487,11 +487,18 @@ local function setMinimizedState(targetMinimized)
     if ConfirmFrame.Visible then return end
     minimized = targetMinimized
     
+    -- Calcula el tope actual de forma exacta para que no se mueva el GUI verticalmente al escalar
+    local currentTopEdge = MainFrame.Position.Y.Offset - (MainFrame.Size.Y.Offset / 2)
+    
     if minimized then
         MinimizeBtn.Text = "+"
         Tooltip.Visible = false
         MainFrame.ClipsDescendants = true
-        local minimizeTween = TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 320, 0, 28)})
+        local targetY = currentTopEdge + 14
+        local minimizeTween = TweenService:Create(MainFrame, tweenInfo, {
+            Size = UDim2.new(0, 320, 0, 28),
+            Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset, MainFrame.Position.Y.Scale, targetY)
+        })
         minimizeTween:Play()
         minimizeTween.Completed:Connect(function()
             if minimized then
@@ -503,7 +510,11 @@ local function setMinimizedState(targetMinimized)
         MinimizeBtn.Text = "-"
         CmdBar.Visible = true
         CmdsList.Visible = true
-        local restoreTween = TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 320, 0, 240)})
+        local targetY = currentTopEdge + 120
+        local restoreTween = TweenService:Create(MainFrame, tweenInfo, {
+            Size = UDim2.new(0, 320, 0, 240),
+            Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset, MainFrame.Position.Y.Scale, targetY)
+        })
         restoreTween:Play()
     end
 end
@@ -518,7 +529,7 @@ end
 
 DragHandle.InputBegan:Connect(function(input)
     if ConfirmFrame.Visible then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
@@ -569,7 +580,7 @@ local function stopFullbright()
     Lighting.Ambient = origAmbient
     Lighting.OutdoorAmbient = origOutdoorAmbient
     Lighting.Brightness = origBrightness
-    Lighting.GlobalShadows = false
+    Lighting.GlobalShadows = origShadows -- Arreglado: Restaura correctamente las sombras originales del juego
 end
 
 local function stopNofog()
