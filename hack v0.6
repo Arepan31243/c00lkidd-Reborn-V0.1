@@ -717,8 +717,6 @@ YesBtn.Activated:Connect(function()
     CloseBtn.Active = false
     MinimizeBtn.Active = false
     LogsBtn.Active = false
-    CmdBar.Visible = false
-    CmdsList.Visible = false
     
     local closeAudio = Instance.new("Sound")
     closeAudio.SoundId = "rbxassetid://138413132442066"
@@ -790,18 +788,26 @@ YesBtn.Activated:Connect(function()
         if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
         if tooltipConnection then tooltipConnection:Disconnect(); tooltipConnection = nil end
         LogsFrame:Destroy()
-        
-        task.delay(4.5, function()
-            local fadeTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
-            fadeTween:Play()
-            fadeTween.Completed:Connect(function()
-                CloseSubtitleLabel:Destroy()
-                closeAudio:Destroy()
-                ScreenGui:Destroy()
-            end)
+        MainFrame:Destroy()
+    end)
+
+    -- La animación del GUI corre un segundo antes de que termine el tiempo total del diálogo (a los 3.5 segundos)
+    task.delay(3.5, function()
+        CmdBar.Visible = false
+        CmdsList.Visible = false
+        closePhase1:Play()
+    end)
+    
+    -- El sonido y los subtítulos terminan de desvanecerse por completo a los 4.5 segundos
+    task.delay(4.5, function()
+        local fadeTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Connect(function()
+            CloseSubtitleLabel:Destroy()
+            closeAudio:Destroy()
+            ScreenGui:Destroy()
         end)
     end)
-    closePhase1:Play()
 end)
 
 local function spawnSuccessPopup()
