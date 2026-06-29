@@ -88,7 +88,7 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Panel Principal (Corregido: Aparece exactamente en el centro de la pantalla)
+-- Panel Principal
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainPanel"
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -527,7 +527,6 @@ end
 
 MinimizeBtn.Activated:Connect(function() setMinimizedState(not minimized) end)
 
--- Sistema de Arrastre Absoluto Corregido (El GUI ahora se mueve perfectamente en cualquier resolución)
 local dragging, dragInput, dragStart, startPos
 local function update(input)
     local delta = input.Position - dragStart
@@ -536,7 +535,7 @@ end
 
 DragHandle.InputBegan:Connect(function(input)
     if ConfirmFrame.Visible then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
@@ -609,7 +608,6 @@ local function stopStats()
     if StatsFrame then StatsFrame:Destroy(); StatsFrame = nil end
 end
 
--- Comando Stats Corregido (Lecturas exactas de FPS y Ping en bucle estable)
 local function startStats()
     if statsActive then return end
     statsActive = true
@@ -720,7 +718,7 @@ local function applyESP(player, character)
         label.Parent = bbg
         
         local function updateTag()
-            if humanoid and label and bbg Communities and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
+            if humanoid and label and bbg and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
                 local currentHp = math.floor(humanoid.Health)
                 local maxHp = math.floor(humanoid.MaxHealth)
                 local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Magnitude)
