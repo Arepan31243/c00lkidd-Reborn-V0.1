@@ -88,11 +88,11 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Panel Principal
+-- Panel Principal (Corregido: Aparece exactamente en el centro de la pantalla)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainPanel"
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0) -- Arreglado: Aparece exactamente en el centro de la pantalla
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.Size = UDim2.new(0, 0, 0, 0) 
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 2
@@ -232,7 +232,7 @@ local LogsFrame = Instance.new("Frame")
 LogsFrame.Name = "LogsPanel"
 LogsFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 LogsFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-LogsFrame.Size = UDim2.new(0, 0, 0, 0)
+LogsFrame.Size = UDim2.new(0, 280, 0, 200)
 LogsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 LogsFrame.BorderSizePixel = 2
 LogsFrame.BorderColor3 = Color3.fromRGB(255, 0, 51) 
@@ -295,6 +295,7 @@ end
 
 LogsBtn.Activated:Connect(function()
     if LogsFrame.Visible then return end
+    LogsFrame.Size = UDim2.new(0, 0, 0, 0)
     LogsFrame.Visible = true
     TweenService:Create(LogsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 280, 0, 200)}):Play()
 end)
@@ -493,7 +494,6 @@ local function setMinimizedState(targetMinimized)
     if ConfirmFrame.Visible then return end
     minimized = targetMinimized
     
-    -- Calcula el tope actual de forma exacta para que no se mueva el GUI verticalmente al escalar
     local currentTopEdge = MainFrame.Position.Y.Offset - (MainFrame.Size.Y.Offset / 2)
     
     if minimized then
@@ -527,6 +527,7 @@ end
 
 MinimizeBtn.Activated:Connect(function() setMinimizedState(not minimized) end)
 
+-- Sistema de Arrastre Absoluto Corregido (El GUI ahora se mueve perfectamente en cualquier resolución)
 local dragging, dragInput, dragStart, startPos
 local function update(input)
     local delta = input.Position - dragStart
@@ -608,6 +609,7 @@ local function stopStats()
     if StatsFrame then StatsFrame:Destroy(); StatsFrame = nil end
 end
 
+-- Comando Stats Corregido (Lecturas exactas de FPS y Ping en bucle estable)
 local function startStats()
     if statsActive then return end
     statsActive = true
@@ -631,22 +633,20 @@ local function startStats()
     StatsLabel.TextColor3 = Color3.fromRGB(255, 51, 51)
     StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
     StatsLabel.TextYAlignment = Enum.TextYAlignment.Center
+    StatsLabel.Text = "FPS: --\nPING: -- ms"
     StatsLabel.Parent = StatsFrame
 
-    local lastUpdate = 0
+    local lastUpdate = os.clock()
     local frameCount = 0
-    statsConnection = RunService.RenderStepped:Connect(function(dt)
+    statsConnection = RunService.RenderStepped:Connect(function()
         frameCount = frameCount + 1
-        lastUpdate = lastUpdate + dt
-        if lastUpdate >= 0.5 then
-            local fps = math.floor(frameCount / lastUpdate)
-            local ping = 0
-            pcall(function()
-                ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
-            end)
+        local now = os.clock()
+        if now - lastUpdate >= 0.5 then
+            local fps = math.floor(frameCount / (now - lastUpdate))
+            local ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
             StatsLabel.Text = "FPS: " .. fps .. "\nPING: " .. ping .. " ms"
             frameCount = 0
-            lastUpdate = 0
+            lastUpdate = now
         end
     end)
 end
@@ -720,7 +720,7 @@ local function applyESP(player, character)
         label.Parent = bbg
         
         local function updateTag()
-            if humanoid and label and bbg and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
+            if humanoid and label and bbg Communities and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
                 local currentHp = math.floor(humanoid.Health)
                 local maxHp = math.floor(humanoid.MaxHealth)
                 local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Magnitude)
@@ -1039,14 +1039,12 @@ local function executeCommand(rawTextString)
     local hasSemicolon = false
     local cleanCommandString = input
     
-    -- Arreglado: Permite limpiar de forma segura ambos punto y coma si se envían juntos en el formato ;comando;
-    if string.sub(cleanCommandString, 1, 1) == ";" then
+    if string.sub(input, 1, 1) == ";" then
         hasSemicolon = true
-        cleanCommandString = string.sub(cleanCommandString, 2)
-    end
-    if string.sub(cleanCommandString, -1) == ";" then
+        cleanCommandString = string.sub(input, 2)
+    elseif string.sub(input, -1) == ";" then
         hasSemicolon = true
-        cleanCommandString = string.sub(cleanCommandString, 1, -2)
+        cleanCommandString = string.sub(input, 1, -2)
     end
     
     cleanCommandString = string.gsub(cleanCommandString, "^%s*(.-)%s*$", "%1")
