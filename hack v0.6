@@ -77,6 +77,14 @@ local chatSpamTask = nil
 local antiAfkConnection = nil
 local keybinds = {} 
 
+-- Variables de estado Adicionales
+local telekinesisActive = false
+local telekinesisConnection = nil
+local antivoidActive = false
+local antivoidPart = nil
+local antivoidConnection = nil
+local crosshairLabel = nil
+
 -- Configuración de Animaciones
 local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -97,7 +105,7 @@ MainFrame.Size = UDim2.new(0, 0, 0, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 2
 MainFrame.BorderColor3 = Color3.fromRGB(255, 0, 51)
-MainFrame.Active = false -- Cambiado a false para permitir que el hijo reciba el input
+MainFrame.Active = false
 MainFrame.ClipsDescendants = true 
 MainFrame.ZIndex = 1
 MainFrame.Parent = ScreenGui
@@ -114,7 +122,7 @@ TitleBar.Visible = false
 TitleBar.ZIndex = 3
 TitleBar.Parent = MainFrame
 
--- Zona de Arrastre Segura (Corregida: Active true para arrastre)
+-- Zona de Arrastre Segura
 local DragHandle = Instance.new("TextLabel")
 DragHandle.Name = "DragHandle"
 DragHandle.Size = UDim2.new(1, -100, 1, 0) 
@@ -284,7 +292,8 @@ local function addLog(cmdText)
     logLbl.BackgroundTransparency = 1
     logLbl.Font = Enum.Font.Code
     
-    local timeString = string.format("%02d:%02d:%02d", os.date("*t").hour, os.date("*t").min, os.date("*t").sec)
+    local dateTable = os.date("*t")
+    local timeString = string.format("%02d:%02d:%02d", dateTable.hour, dateTable.min, dateTable.sec)
     logLbl.Text = "[" .. timeString .. "] " .. cmdText
     logLbl.TextColor3 = Color3.fromRGB(255, 80, 80) 
     logLbl.TextSize = 13
@@ -440,6 +449,13 @@ addCmdLabel("fpscap [num];", "Cambia el límite máximo de FPS permitidos.", {"f
 addCmdLabel("serverhop; / sh;", "Te transfiere saltando a servidores públicos óptimos.", {"serverhop", "sh"})
 addCmdLabel("camfov [num];", "Ajusta el FOV de la cámara con transiciones suaves.", {"camfov"})
 addCmdLabel("stats;", "Muestra u oculta el panel de rendimiento (FPS y Ping).", {"stats"})
+addCmdLabel("telekinesis;", "Mueve objetos no anclados con el cursor del mouse.", {"telekinesis"})
+addCmdLabel("untelekinesis;", "Desactiva la manipulación de objetos.", {"untelekinesis"})
+addCmdLabel("antivoid;", "Crea una plataforma de seguridad invisible bajo el mapa.", {"antivoid"})
+addCmdLabel("unantivoid;", "Elimina la plataforma anti-void de protección.", {"unantivoid"})
+addCmdLabel("crosshair [id];", "Dibuja una mira central con un Image ID personalizado.", {"crosshair"})
+addCmdLabel("uncrosshair;", "Remueve la mira fija central de la pantalla.", {"uncrosshair"})
+addCmdLabel("fpsboost; / potato;", "Optimiza el mapa eliminando texturas y efectos pesados.", {"fpsboost", "potato"})
 
 local function updateScrollLayout()
     local visibleCount = 0
@@ -522,12 +538,17 @@ local function setMinimizedState(targetMinimized)
             Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset, MainFrame.Position.Y.Scale, targetY)
         })
         restoreTween:Play()
+        restoreTween.Completed:Connect(function()
+            if not minimized then
+                MainFrame.ClipsDescendants = false
+            end
+        end)
     end
 end
 
 MinimizeBtn.Activated:Connect(function() setMinimizedState(not minimized) end)
 
--- Arrastre corregido para recibir input del hijo
+-- Arrastre seguro para la interfaz
 local dragging, dragInput, dragStart, startPos
 local function update(input)
     local delta = input.Position - dragStart
@@ -642,8 +663,11 @@ local function startStats()
         local now = os.clock()
         if now - lastUpdate >= 0.5 then
             local fps = math.floor(frameCount / (now - lastUpdate))
-            local ping = math.floor(LocalPlayer:GetNetworkPing() * 1000)
-            StatsLabel.Text = "FPS: " .. fps .. "\nPING: " .. ping .. " ms"
+            local success, rawPing = pcall(function() return LocalPlayer:GetNetworkPing() end)
+            local ping = (success and type(rawPing) == "number") and math.floor(rawPing * 1000) or 0
+            if StatsLabel and StatsLabel.Parent then
+                StatsLabel.Text = "FPS: " .. fps .. "\nPING: " .. ping .. " ms"
+            end
             frameCount = 0
             lastUpdate = now
         end
@@ -656,13 +680,17 @@ local function getClosestPlayerToMouse()
     local mousePos = UserInputService:GetMouseLocation()
 
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(p.Character.Head.Position)
-            if onScreen then
-                local distance = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                if distance < shortestDistance then
-                    shortestDistance = distance
-                    closest = p
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if head and hum and hum.Health > 0 then
+                local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local distance = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closest = p
+                    end
                 end
             end
         end
@@ -683,8 +711,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 local function applyESP(player, character)
-    if not character then return end
-    if character:FindFirstChild("c00l_ESP") then return end 
+    if not character or character:FindFirstChild("c00l_ESP") then return end 
     
     local highlight = Instance.new("Highlight")
     highlight.Name = "c00l_ESP"
@@ -718,16 +745,23 @@ local function applyESP(player, character)
         label.TextYAlignment = Enum.TextYAlignment.Center 
         label.Parent = bbg
         
-        local function updateTag()
-            if humanoid and label and bbg and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and character:FindFirstChild("HumanoidRootPart") then
+        local renderConn
+        renderConn = RunService.RenderStepped:Connect(function()
+            if not espActive or not character or not character.Parent or not head or not head.Parent or not humanoid or humanoid.Health <= 0 or not label or not label.Parent then
+                renderConn:Disconnect()
+                return
+            end
+            local localChar = LocalPlayer.Character
+            local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+            local targetHrp = character:FindFirstChild("HumanoidRootPart")
+            
+            if localHrp and targetHrp then
                 local currentHp = math.floor(humanoid.Health)
                 local maxHp = math.floor(humanoid.MaxHealth)
-                local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Magnitude)
+                local dist = math.floor((localHrp.Position - targetHrp.Position).Magnitude)
                 label.Text = player.Name .. "\n[" .. currentHp .. "/" .. maxHp .. " HP] • " .. dist .. "s"
             end
-        end
-        
-        local renderConn = RunService.RenderStepped:Connect(updateTag)
+        end)
         table.insert(espConnections, renderConn)
     end
 end
@@ -853,20 +887,25 @@ YesBtn.Activated:Connect(function()
             hrp.SpinBotVelocity:Destroy()
         end
 
+        telekinesisActive = false
+        if telekinesisConnection then telekinesisConnection:Disconnect() end
+        antivoidActive = false
+        if antivoidConnection then antivoidConnection:Disconnect() end
+        if antivoidPart then antivoidPart:Destroy() end
+        if crosshairLabel then crosshairLabel:Destroy() end
+
         if viewConnection then viewConnection:Disconnect(); viewConnection = nil end
         if tooltipConnection then tooltipConnection:Disconnect(); tooltipConnection = nil end
         LogsFrame:Destroy()
         MainFrame:Destroy()
     end)
 
-    -- La animación del GUI corre un segundo antes de que termine el tiempo total del diálogo (a los 3.5 segundos)
     task.delay(3.5, function()
         CmdBar.Visible = false
         CmdsList.Visible = false
         closePhase1:Play()
     end)
     
-    -- El sonido y los subtítulos terminan de desvanecerse por completo a los 4.5 segundos
     task.delay(4.5, function()
         local fadeTween = TweenService:Create(CloseSubtitleLabel, TweenInfo.new(0.5), {TextTransparency = 1, TextStrokeTransparency = 1})
         fadeTween:Play()
@@ -919,17 +958,27 @@ local function spawnSuccessPopup()
     PopText.Position = UDim2.new(0, 0, 0, 18)
     PopText.BackgroundTransparency = 1
     PopText.Font = Enum.Font.Code
-    local alertMsgs = {"XDD", "H4CKED", "LMAO", "EZ CLAP", "OWNED"}
-    PopText.Text = alertMsgs[Random.new():NextInteger(1, #alertMsgs)]
+    PopText.Text = ""
     PopText.TextColor3 = Color3.fromRGB(255, 0, 51) 
     PopText.TextSize = 13
     PopText.ZIndex = 61
     PopText.Parent = PopFrame
 
+    local alertMsgs = {"XDD", "H4CKED", "LMAO", "EZ CLAP", "OWNED"}
+    local selectedText = alertMsgs[Random.new():NextInteger(1, #alertMsgs)]
+
     local appearTween = TweenService:Create(PopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, 140, 0, 65)
     })
     appearTween:Play()
+
+    task.wait(0.1)
+    task.spawn(function()
+        for i = 1, #selectedText do
+            PopText.Text = string.sub(selectedText, 1, i)
+            task.wait(0.08)
+        end
+    end)
 
     task.delay(2, function()
         if PopFrame then
@@ -950,6 +999,16 @@ local function spawnErrorPopup(errorText)
     errorAudio:Play()
     task.delay(3, function() errorAudio:Destroy() end)
 
+    local baseWidth = 140
+    local baseHeight = 65
+    local textSize = 11
+    local textLen = #errorText
+    if textLen > 18 then
+        textSize = 14 
+        baseWidth = math.clamp(160 + (textLen - 18) * 5, 220, 340)
+        baseHeight = math.clamp(75 + math.floor(textLen / 22) * 12, 85, 130)
+    end
+
     local PopFrame = Instance.new("Frame")
     PopFrame.Name = "ErrorPopup"
     local rx = Random.new():NextNumber(0.05, 0.8)
@@ -965,7 +1024,7 @@ local function spawnErrorPopup(errorText)
     PopFrame.Parent = ScreenGui
 
     local PopTitle = Instance.new("TextLabel")
-    PopTitle.Size = UDim2.new(0, 140, 0, 18) 
+    PopTitle.Size = UDim2.new(1, 0, 0, 18) 
     PopTitle.BackgroundColor3 = Color3.fromRGB(255, 0, 51)
     PopTitle.BackgroundTransparency = 0.9 
     PopTitle.BorderSizePixel = 1
@@ -979,21 +1038,31 @@ local function spawnErrorPopup(errorText)
     PopTitle.Parent = PopFrame
 
     local PopText = Instance.new("TextLabel")
-    PopText.Size = UDim2.new(0, 140, 0, 47)
-    PopText.Position = UDim2.new(0, 0, 0, 18)
+    PopText.Size = UDim2.new(1, -10, 1, -22)
+    PopText.Position = UDim2.new(0, 5, 0, 18)
     PopText.BackgroundTransparency = 1
     PopText.Font = Enum.Font.Code
-    PopText.Text = string.lower(errorText)
+    PopText.Text = ""
     PopText.TextColor3 = Color3.fromRGB(255, 0, 51) 
-    PopText.TextSize = 12
+    PopText.TextSize = textSize
     PopText.TextWrapped = true
     PopText.ZIndex = 61
     PopText.Parent = PopFrame
 
+    local selectedText = string.lower(errorText)
+
     local appearTween = TweenService:Create(PopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 140, 0, 65)
+        Size = UDim2.new(0, baseWidth, 0, baseHeight)
     })
     appearTween:Play()
+
+    task.wait(0.1)
+    task.spawn(function()
+        for i = 1, #selectedText do
+            PopText.Text = string.sub(selectedText, 1, i)
+            task.wait(0.06)
+        end
+    end)
 
     task.delay(2, function()
         if PopFrame then
@@ -1024,8 +1093,26 @@ local VALID_COMMANDS = {
     ["spin"] = true, ["unspin"] = true,
     ["chatspam"] = true, ["unchatspam"] = true, ["keybind"] = true, ["clearbinds"] = true,
     ["gravity"] = true, ["ungravity"] = true, ["antiafk"] = true, ["noidle"] = true, ["unantiafk"] = true,
-    ["fpscap"] = true, ["serverhop"] = true, ["sh"] = true, ["camfov"] = true, ["stats"] = true
+    ["fpscap"] = true, ["serverhop"] = true, ["sh"] = true, ["camfov"] = true, ["stats"] = true,
+    ["telekinesis"] = true, ["untelekinesis"] = true, ["antivoid"] = true, ["unantivoid"] = true,
+    ["crosshair"] = true, ["uncrosshair"] = true, ["fpsboost"] = true, ["potato"] = true
 }
+
+local function levenshtein(s, t)
+    if s == t then return 0 end
+    if #s == 0 then return #t end
+    if #t == 0 then return #s end
+    local d = {}
+    for i = 0, #s do d[i] = {[0] = i} end
+    for j = 0, #t do d[0][j] = j end
+    for i = 1, #s do
+        for j = 1, #t do
+            local cost = (string.sub(s, i, i) == string.sub(t, j, j)) and 0 or 1
+            d[i][j] = math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + cost)
+        end
+    end
+    return d[#s][#t]
+end
 
 local function executeCommand(rawTextString)
     if rawTextString == "" or ConfirmFrame.Visible then return false, "error", "" end
@@ -1055,7 +1142,9 @@ local function executeCommand(rawTextString)
 
     if isOtherCommand or isValidRejoin then
         if hasSemicolon then
-            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local character = LocalPlayer.Character
+            if not character then return false, "personaje no encontrado.", "" end
+            
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             local hrp = character:FindFirstChild("HumanoidRootPart")
             
@@ -1064,10 +1153,10 @@ local function executeCommand(rawTextString)
                     local amount = tonumber(args[2])
                     if amount then 
                         commandFound = true
-                        hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0)
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
                         humanoid.WalkSpeed = amount 
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: speed [num];"
                     end
                 elseif cmd == "jumppower" or cmd == "jpower" then
                     local amount = tonumber(args[2])
@@ -1077,7 +1166,7 @@ local function executeCommand(rawTextString)
                         humanoid.JumpPower = amount 
                         humanoid.JumpHeight = amount / 3.5
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: jumppower [num];"
                     end
                 elseif cmd == "btools" then
                     commandFound = true
@@ -1093,14 +1182,14 @@ local function executeCommand(rawTextString)
                     commandFound = true
                     local queue = queue_on_teleport or (syn and syn.queue_on_teleport)
                     if queue and getgenv().c00l_raw then queue(getgenv().c00l_raw) end
-                    game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
                 
                 elseif cmd == "esp" then commandFound = true; startESP()
                 elseif cmd == "unesp" then commandFound = true; stopESP()
 
                 elseif cmd == "view" then
                     local targetName = args[2]
-                    if targetName then
+                    if targetName and targetName ~= "" then
                         for _, p in ipairs(Players:GetPlayers()) do
                             if p ~= LocalPlayer then
                                 local nameMatch = string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName
@@ -1130,6 +1219,11 @@ local function executeCommand(rawTextString)
                                 end
                             end
                         end
+                        if not commandFound then
+                            errorMessage = "Jugador no existente."
+                        end
+                    else
+                        errorMessage = "Falta nombre. Sintaxis: view [jugador];"
                     end
 
                 elseif cmd == "unview" then
@@ -1186,38 +1280,53 @@ local function executeCommand(rawTextString)
                 elseif cmd == "unfreecam" or cmd == "unfc" then commandFound = true; stopFreecam()
                 elseif cmd == "fling" then
                     local targetName = args[2]
-                    if targetName then
+                    if targetName and targetName ~= "" then
+                        local foundPlayer = nil
                         for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName then
-                                if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    commandFound = true
-                                    local targetHrp = p.Character.HumanoidRootPart
-                                    local oldCFrame = hrp.CFrame
-                                    local bav = Instance.new("BodyAngularVelocity")
-                                    bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                                    bav.AngularVelocity = Vector3.new(0, 999999, 0)
-                                    bav.Parent = hrp
-                                    
-                                    local startTime = os.clock()
-                                    local flingLoop
-                                    flingLoop = RunService.Heartbeat:Connect(function()
-                                        if os.clock() - startTime > 1.5 or not hrp or not targetHrp or not targetHrp.Parent then
-                                            if flingLoop then flingLoop:Disconnect() end
-                                            if bav then bav:Destroy() end
-                                            if hrp then
-                                                hrp.CFrame = oldCFrame
-                                                hrp.Velocity = Vector3.new(0,0,0)
-                                                hrp.RotVelocity = Vector3.new(0,0,0)
-                                            end
-                                        else
-                                            hrp.CFrame = targetHrp.CFrame * CFrame.new(math.random(-2, 2)/10, 0, math.random(-2, 2)/10)
-                                            hrp.Velocity = Vector3.new(9e9, 9e9, 9e9)
-                                        end
-                                    end)
+                            if p ~= LocalPlayer then
+                                local nameMatch = string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName
+                                local dispMatch = p.DisplayName and (string.sub(string.lower(p.DisplayName), 1, string.len(targetName)) == targetName)
+                                if nameMatch or dispMatch then
+                                    foundPlayer = p
                                     break
                                 end
                             end
                         end
+                        
+                        if foundPlayer then
+                            if foundPlayer.Character and foundPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                commandFound = true
+                                local targetHrp = foundPlayer.Character.HumanoidRootPart
+                                local oldCFrame = hrp.CFrame
+                                local bav = Instance.new("BodyAngularVelocity")
+                                bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                                bav.AngularVelocity = Vector3.new(0, 999999, 0)
+                                bav.Parent = hrp
+                                
+                                local startTime = os.clock()
+                                local flingLoop
+                                flingLoop = RunService.Heartbeat:Connect(function()
+                                    if os.clock() - startTime > 1.5 or not hrp or not targetHrp or not targetHrp.Parent then
+                                        if flingLoop then flingLoop:Disconnect() end
+                                        if bav then bav:Destroy() end
+                                        if hrp then
+                                            hrp.CFrame = oldCFrame
+                                            hrp.AssemblyLinearVelocity = Vector3.new(0,0,0)
+                                            hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
+                                        end
+                                    else
+                                        hrp.CFrame = targetHrp.CFrame * CFrame.new(math.random(-2, 2)/10, 0, math.random(-2, 2)/10)
+                                        hrp.AssemblyLinearVelocity = Vector3.new(9e9, 9e9, 9e9)
+                                    end
+                                end)
+                            else
+                                errorMessage = "El jugador no tiene RootPart."
+                            end
+                        else
+                            errorMessage = "Jugador no existente."
+                        end
+                    else
+                        errorMessage = "Falta nombre. Sintaxis: fling [jugador];"
                     end
 
                 elseif cmd == "fullbright" or cmd == "fb" then
@@ -1285,7 +1394,7 @@ local function executeCommand(rawTextString)
                     if not infJump then
                         infJump = true
                         infJumpConnection = UserInputService.JumpRequest:Connect(function()
-                            if infJump and character then
+                            if infJump and character and humanoid then
                                 humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
                             end
                         end)
@@ -1295,44 +1404,40 @@ local function executeCommand(rawTextString)
                     infJump = false
                     if infJumpConnection then infJumpConnection:Disconnect(); infJumpConnection = nil end
                 elseif cmd == "fly" then
-                    local multiplier = tonumber(args[2])
-                    if multiplier then
-                        flySpeed = multiplier * 50
-                        commandFound = true
-                        if not flying then
-                            flying = true
-                            humanoid.PlatformStand = true
-                            flyBv = Instance.new("BodyVelocity")
-                            flyBv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
-                            flyBv.Velocity = Vector3.new(0, 0, 0)
-                            flyBv.Parent = hrp
-                            flyBg = Instance.new("BodyGyro")
-                            flyBg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
-                            flyBg.CFrame = hrp.CFrame
-                            flyBg.Parent = hrp
+                    local multiplier = tonumber(args[2]) or 1
+                    flySpeed = multiplier * 50
+                    commandFound = true
+                    if not flying then
+                        flying = true
+                        humanoid.PlatformStand = true
+                        flyBv = Instance.new("BodyVelocity")
+                        flyBv.MaxForce = Vector3.new(4e5, 4e5, 4e5)
+                        flyBv.Velocity = Vector3.new(0, 0, 0)
+                        flyBv.Parent = hrp
+                        flyBg = Instance.new("BodyGyro")
+                        flyBg.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
+                        flyBg.CFrame = hrp.CFrame
+                        flyBg.Parent = hrp
+                        
+                        flyConnection = RunService.RenderStepped:Connect(function()
+                            if not flying or not hrp or not hrp.Parent or not humanoid or not flyBg or not flyBv or not flyBg.Parent or not flyBv.Parent then stopFlying(humanoid); return end
+                            flyBg.CFrame = Camera.CFrame
+                            local direction = Vector3.new(0, 0, 0)
+                            if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction = direction + Camera.CFrame.LookVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction = direction - Camera.CFrame.LookVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction = direction - Camera.CFrame.RightVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction = direction + Camera.CFrame.RightVector end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction = direction + Vector3.new(0, 1, 0) end
+                            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction = direction - Vector3.new(0, 1, 0) end
                             
-                            flyConnection = RunService.RenderStepped:Connect(function()
-                                if not flying or not hrp or not hrp.Parent or not humanoid then stopFlying(humanoid); return end
-                                flyBg.CFrame = Camera.CFrame
-                                local direction = Vector3.new(0, 0, 0)
-                                if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction = direction + Camera.CFrame.LookVector end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction = direction - Camera.CFrame.LookVector end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction = direction - Camera.CFrame.RightVector end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction = direction + Camera.CFrame.RightVector end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction = direction + Vector3.new(0, 1, 0) end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction = direction - Vector3.new(0, 1, 0) end
-                                
-                                local targetVelocity = (direction.Magnitude > 0) and (direction.Unit * flySpeed) or Vector3.new(0,0,0)
-                                flyBv.Velocity = flyBv.Velocity:Lerp(targetVelocity, 0.2)
-                            end)
-                        end
-                    else
-                        errorMessage = "falta un numero."
+                            local targetVelocity = (direction.Magnitude > 0) and (direction.Unit * flySpeed) or Vector3.new(0,0,0)
+                            flyBv.Velocity = flyBv.Velocity:Lerp(targetVelocity, 0.2)
+                        end)
                     end
                 elseif cmd == "unfly" then commandFound = true; stopFlying(humanoid)
                 elseif cmd == "tp" then
                     local targetName = args[2]
-                    if targetName then
+                    if targetName and targetName ~= "" then
                         for _, p in ipairs(Players:GetPlayers()) do
                             if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, string.len(targetName)) == targetName then
                                 if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -1342,6 +1447,11 @@ local function executeCommand(rawTextString)
                                 end
                             end
                         end
+                        if not commandFound then
+                            errorMessage = "Jugador no existente."
+                        end
+                    else
+                        errorMessage = "Falta nombre. Sintaxis: tp [jugador];"
                     end
                 
                 elseif cmd == "hb" then
@@ -1357,7 +1467,7 @@ local function executeCommand(rawTextString)
                             end
                         end
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: hb [num];"
                     end
                 elseif cmd == "unhb" then
                     commandFound = true
@@ -1400,7 +1510,7 @@ local function executeCommand(rawTextString)
                             commandFound = true
                         end
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: spin [vel];"
                     end
                 elseif cmd == "unspin" then
                     commandFound = true
@@ -1418,7 +1528,7 @@ local function executeCommand(rawTextString)
                     chatSpamTask = task.spawn(function()
                         while chatSpamActive do
                             local bypassStr = message .. " [" .. tostring(math.random(100,999)) .. "]"
-                            local textChannel = game:GetService("TextChatService"):FindFirstChild("TextChannels") and game:GetService("TextChatService").TextChannels:FindFirstChild("RBXGeneral")
+                            local textChannel = game:GetService("TextChatService"):FindFirstChild("TextChannels") and game:GetService("TextChatService").TextChatService.TextChannels:FindFirstChild("RBXGeneral")
                             if textChannel then textChannel:SendAsync(bypassStr)
                             else
                                 local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents") and game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
@@ -1431,14 +1541,18 @@ local function executeCommand(rawTextString)
                     commandFound = true
                     chatSpamActive = false
                 elseif cmd == "keybind" then
-                    commandFound = true
                     local cmdToBind = args[2]
                     local keyStr = args[3] and args[3]:upper()
                     if cmdToBind and keyStr then
                         local success, keyCode = pcall(function() return Enum.KeyCode[keyStr] end)
                         if success and keyCode then
                             keybinds[keyCode] = ";" .. cmdToBind .. ";"
+                            commandFound = true
+                        else
+                            errorMessage = "Tecla invalida."
                         end
+                    else
+                        errorMessage = "Faltan argumentos. Sintaxis: keybind [cmd] [tecla];"
                     end
                 elseif cmd == "clearbinds" then
                     commandFound = true
@@ -1450,7 +1564,7 @@ local function executeCommand(rawTextString)
                         commandFound = true
                         Workspace.Gravity = targetGrav
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: gravity [num];"
                     end
                 elseif cmd == "ungravity" then
                     commandFound = true
@@ -1477,7 +1591,7 @@ local function executeCommand(rawTextString)
                         commandFound = true
                         setfpscap(cap)
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: fpscap [num];"
                     end
                 
                 elseif cmd == "serverhop" or cmd == "sh" then
@@ -1503,15 +1617,108 @@ local function executeCommand(rawTextString)
                         commandFound = true
                         TweenService:Create(Camera, TweenInfo.new(0.2), {FieldOfView = targetFov}):Play()
                     else
-                        errorMessage = "falta un numero."
+                        errorMessage = "Falta numero. Sintaxis: camfov [num];"
                     end
                 elseif cmd == "stats" then
                     commandFound = true
                     if statsActive then stopStats() else startStats() end
+                
+                elseif cmd == "telekinesis" then
+                    commandFound = true
+                    if not telekinesisActive then
+                        telekinesisActive = true
+                        telekinesisConnection = RunService.Heartbeat:Connect(function()
+                            if telekinesisActive and Mouse.Target and Mouse.Target:IsA("BasePart") and not Mouse.Target.Anchored then
+                                pcall(function()
+                                    Mouse.Target.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                    Mouse.Target.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                    Mouse.Target.CFrame = Mouse.Target.CFrame:Lerp(CFrame.new(Mouse.Hit.Position), 0.25)
+                                end)
+                            end
+                        end)
+                    end
+                elseif cmd == "untelekinesis" then
+                    commandFound = true
+                    telekinesisActive = false
+                    if telekinesisConnection then telekinesisConnection:Disconnect(); telekinesisConnection = nil end
+
+                elseif cmd == "antivoid" then
+                    commandFound = true
+                    if not antivoidActive then
+                        antivoidActive = true
+                        pcall(function()
+                            antivoidPart = Instance.new("Part")
+                            antivoidPart.Name = "c00l_AntiVoid"
+                            antivoidPart.Size = Vector3.new(5000, 5, 5000)
+                            antivoidPart.Position = Vector3.new(0, -250, 0)
+                            antivoidPart.Anchored = true
+                            antivoidPart.Transparency = 1
+                            antivoidPart.CanCollide = true
+                            antivoidPart.Parent = Workspace
+                            
+                            antivoidConnection = antivoidPart.Touched:Connect(function(hit)
+                                if character and hit:IsDescendantOf(character) and hrp then
+                                    hrp.CFrame = CFrame.new(0, 50, 0)
+                                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                end
+                            end)
+                        end)
+                    end
+                elseif cmd == "unantivoid" then
+                    commandFound = true
+                    antivoidActive = false
+                    if antivoidConnection then antivoidConnection:Disconnect(); antivoidConnection = nil end
+                    if antivoidPart then antivoidPart:Destroy(); antivoidPart = nil end
+
+                elseif cmd == "crosshair" then
+                    commandFound = true
+                    local id = args[2] or "6031763447"
+                    if not string.find(id, "rbxassetid://") then id = "rbxassetid://" .. id end
+                    if crosshairLabel then crosshairLabel:Destroy() end
+                    crosshairLabel = Instance.new("ImageLabel")
+                    crosshairLabel.Name = "c00l_Crosshair"
+                    crosshairLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                    crosshairLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    crosshairLabel.Size = UDim2.new(0, 24, 0, 24)
+                    crosshairLabel.BackgroundTransparency = 1
+                    crosshairLabel.Image = id
+                    crosshairLabel.ZIndex = 99
+                    crosshairLabel.Parent = ScreenGui
+                elseif cmd == "uncrosshair" then
+                    commandFound = true
+                    if crosshairLabel then crosshairLabel:Destroy(); crosshairLabel = nil end
+
+                elseif cmd == "fpsboost" or cmd == "potato" then
+                    commandFound = true
+                    pcall(function()
+                        for _, v in ipairs(Workspace:GetDescendants()) do
+                            if v:IsA("BasePart") then 
+                                v.Material = Enum.Material.SmoothPlastic 
+                            elseif v:IsA("Decal") or v:IsA("Texture") or v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Sparkles") then 
+                                v:Destroy() 
+                            end
+                        end
+                        Lighting.GlobalShadows = false
+                    end)
                 end
             end
-        else errorMessage = "requiere ; para su función." end
-    else errorMessage = "comando inexistente." end
+        else errorMessage = "Requiere ';' para su funcion (Ej: ;comando o comando;)." end
+    else
+        local closestCmd = nil
+        local minDistance = math.huge
+        for vCmd, _ in pairs(VALID_COMMANDS) do
+            local dist = levenshtein(cmd, vCmd)
+            if dist < minDistance then
+                minDistance = dist
+                closestCmd = vCmd
+            end
+        end
+        if closestCmd and minDistance <= 3 and #cmd > 1 then
+            errorMessage = "quisiste ejecutar " .. closestCmd .. "?"
+        else
+            errorMessage = "Comando inexistente o desconocido."
+        end
+    end
     
     return commandFound, errorMessage, cleanCommandString
 end
@@ -1519,14 +1726,16 @@ end
 CmdBar.FocusLost:Connect(function(enterPressed)
     if not enterPressed or CmdBar.Text == "" or ConfirmFrame.Visible then return end
     
-    local commandFound, errorMessage, cleanCommandString = executeCommand(CmdBar.Text)
+    local inputEntered = CmdBar.Text
+    local commandFound, errorMessage, cleanCommandString = executeCommand(inputEntered)
     
     if commandFound then
-        addLog(cleanCommandString)
+        addLog("[SUCCESS] Executed: " .. cleanCommandString)
         CmdBar.BorderColor3 = Color3.fromRGB(0, 255, 100)
         CmdBar.PlaceholderText = "escribe tu comando."
         spawnSuccessPopup() 
     else
+        addLog("[SYNTAX ERROR] " .. errorMessage .. " (Input: '" .. inputEntered .. "')")
         CmdBar.BorderColor3 = Color3.fromRGB(255, 0, 0)
         CmdBar.PlaceholderText = errorMessage
         spawnErrorPopup(errorMessage)
@@ -1543,8 +1752,14 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         CmdBar:CaptureFocus()
         CmdBar.Text = "" 
     elseif keybinds[input.KeyCode] then
-        local commandFound = executeCommand(keybinds[input.KeyCode])
-        if commandFound then spawnSuccessPopup() end
+        local bindCommand = keybinds[input.KeyCode]
+        local commandFound, errorMessage, cleanCommandString = executeCommand(bindCommand)
+        if commandFound then 
+            addLog("[KEYBIND SUCCESS] Executed: " .. cleanCommandString)
+            spawnSuccessPopup() 
+        else
+            addLog("[KEYBIND ERROR] " .. errorMessage .. " (Input: '" .. bindCommand .. "')")
+        end
     end
 end)
 
@@ -1556,6 +1771,10 @@ startupPhase1.Completed:Connect(function()
     CmdBar.Visible = true
     CmdsList.Visible = true
     startupPhase2:Play()
+end)
+
+startupPhase2.Completed:Connect(function()
+    MainFrame.ClipsDescendants = false
 end)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
